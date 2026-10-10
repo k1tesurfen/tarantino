@@ -25,7 +25,10 @@ async def run_adb(args: list[str], timeout: float) -> tuple[int, str]:
     try:
         output, _ = await asyncio.wait_for(process.communicate(), timeout)
     except TimeoutError as exc:
-        process.kill()
+        try:
+            process.kill()
+        except ProcessLookupError:
+            pass
         raise AdbError(f"adb {args[0]} timed out") from exc
     return process.returncode or 0, output.decode(errors="replace")
 
@@ -89,12 +92,13 @@ class Adb:
         return bool(match and match.group(1) == "ON")
 
     async def foreground_package(self) -> str | None:
-        output = await self.shell("dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity'")
-        match = re.search(r"\s([\w.]+)/[\w.$]+", output)
+        # Filter in Python: a `| grep` without matches exits 1, which adb reports as failure.
+        output = await self.shell("dumpsys activity activities")
+        match = re.search(r"(?:mResumedActivity|topResumedActivity|ResumedActivity).*?\s([\w.]+)/[\w.$]+", output)
         if match:
             return match.group(1)
-        output = await self.shell("dumpsys window | grep -E 'mCurrentFocus'")
-        match = re.search(r"\s([\w.]+)/[\w.$]+", output)
+        output = await self.shell("dumpsys window")
+        match = re.search(r"mCurrentFocus=.*?\s([\w.]+)/[\w.$]+", output)
         return match.group(1) if match else None
 
     async def wake(self) -> None:

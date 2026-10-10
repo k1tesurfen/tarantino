@@ -1,7 +1,7 @@
 """The show orchestrator: get a title playing on the projector.
 
 Steps: resolve the title -> wake the projector and open Jellyfin (ADB) ->
-wait for the Jellyfin session -> PlayNow -> confirm playback.
+wait for the Jellyfin session -> PlayNow and confirm playback (with resends).
 Only one show runs at a time; a new show cancels the running one.
 """
 
@@ -37,7 +37,9 @@ class Timing:
     app_launch_timeout: float = 20.0
     session_timeout: float = 40.0
     session_settle: float = 2.0
-    confirm_timeout: float = 30.0
+    launch_settle: float = 5.0  # extra time after the app was (re)started by us
+    play_attempts: int = 3
+    play_attempt_timeout: float = 8.0  # resend PlayNow if playback has not started by then
 
 
 class ShowFailed(Exception):
@@ -57,10 +59,20 @@ class RunningShow:
     id: int
     task: asyncio.Task | None = None
     steps: list[dict] = field(default_factory=list)
+    app_launched_at: datetime | None = None  # set when we started the Jellyfin app
 
 
 def _now() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
+
+
+def _parse_jellyfin_time(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value).astimezone(UTC).replace(tzinfo=None)
+    except ValueError:
+        return None
 
 
 def find_projector_session(sessions: list[dict], device_id: str | None) -> dict | None:
@@ -130,10 +142,9 @@ class ShowOrchestrator:
     async def _run(self, running: RunningShow, item: LibraryItem) -> None:
         try:
             plan = await self._step(running, "resolve", self._resolve(item))
-            await self._step(running, "projector", self._prepare_projector())
-            session = await self._step(running, "session", self._wait_for_session())
-            await self._step(running, "play", self._play(session, plan))
-            await self._step(running, "confirm", self._confirm(session, plan))
+            await self._step(running, "projector", self._prepare_projector(running))
+            session = await self._step(running, "session", self._wait_for_session(running))
+            await self._step(running, "play", self._play_and_confirm(session, plan))
         except asyncio.CancelledError:
             self._finish(running, "cancelled", "Replaced by a newer show")
             raise
@@ -163,7 +174,12 @@ class ShowOrchestrator:
             step |= {"status": "cancelled"}
             self._save_steps(running)
             raise
-        message = result.label if isinstance(result, Plan) else result if isinstance(result, str) else None
+        if isinstance(result, Plan):
+            message = result.label
+        elif isinstance(result, dict):
+            message = f"Found {result.get('DeviceName', 'session')}"
+        else:
+            message = result
         step |= {"status": "done", "message": message}
         self._save_steps(running)
         return result
@@ -182,7 +198,7 @@ class ShowOrchestrator:
                 f"+ {len(ids) - 1} queued"  # fmt: skip
         return Plan(ids, resume, False, label)
 
-    async def _prepare_projector(self) -> str:
+    async def _prepare_projector(self, running: RunningShow) -> str:
         address = self.settings.get().projector_address
         if not address:
             return "No projector address configured; assuming Jellyfin is already open"
@@ -201,6 +217,7 @@ class ShowOrchestrator:
             await self._wait_until(adb.screen_on, self.timing.wake_timeout, "Projector did not wake up")
             actions.append("woke projector")
         if await adb.foreground_package() != JELLYFIN_PACKAGE:
+            running.app_launched_at = _now()
             await adb.launch_jellyfin()
 
             async def jellyfin_in_front() -> bool:
@@ -210,29 +227,41 @@ class ShowOrchestrator:
             actions.append("opened Jellyfin")
         return ", ".join(actions) or "Projector on, Jellyfin open"
 
-    async def _wait_for_session(self) -> dict:
+    async def _wait_for_session(self, running: RunningShow) -> dict:
         device_id = self.settings.get().projector_device_id
         user_id = await self.library.resolve_user()
+        launched_at = running.app_launched_at
         deadline = asyncio.get_running_loop().time() + self.timing.session_timeout
         while True:
             sessions = await self.jellyfin.sessions(controllable_by_user_id=user_id, active_within_seconds=120)
             session = find_projector_session(sessions, device_id)
+            if session and launched_at:
+                # Jellyfin keeps listing the previous session for a while after the app
+                # closed; only a session that was active after our launch is usable.
+                last_activity = _parse_jellyfin_time(session.get("LastActivityDate"))
+                if last_activity is None or last_activity < launched_at:
+                    session = None
             if session:
-                # A freshly launched app registers before it is ready for commands.
-                await asyncio.sleep(self.timing.session_settle)
+                # A freshly started app registers before it is ready for commands.
+                await asyncio.sleep(self.timing.launch_settle if launched_at else self.timing.session_settle)
                 return session
             if asyncio.get_running_loop().time() > deadline:
                 hint = "" if device_id else " (no projector device selected in admin)"
                 raise ShowFailed(f"Projector's Jellyfin session not found{hint}")
             await asyncio.sleep(self.timing.poll)
 
-    async def _play(self, session: dict, plan: Plan) -> str:
-        await self.jellyfin.play(session["Id"], plan.item_ids, plan.start_ticks)
-        return f"PlayNow sent to {session.get('DeviceName', 'projector')}"
+    async def _play_and_confirm(self, session: dict, plan: Plan) -> str:
+        """Send PlayNow and wait for playback; resend if a slow client dropped it."""
+        for attempt in range(1, self.timing.play_attempts + 1):
+            await self.jellyfin.play(session["Id"], plan.item_ids, plan.start_ticks)
+            result = await self._confirm(session, plan, self.timing.play_attempt_timeout)
+            if result:
+                return result if attempt == 1 else f"{result} (attempt {attempt})"
+        raise ShowFailed(f"Playback did not start on the projector after {self.timing.play_attempts} attempts")
 
-    async def _confirm(self, session: dict, plan: Plan) -> str:
+    async def _confirm(self, session: dict, plan: Plan, timeout: float) -> str | None:
         device_id = session.get("DeviceId")
-        deadline = asyncio.get_running_loop().time() + self.timing.confirm_timeout
+        deadline = asyncio.get_running_loop().time() + timeout
         while True:
             sessions = await self.jellyfin.sessions(active_within_seconds=120)
             current = next((s for s in sessions if s.get("DeviceId") == device_id), None)
@@ -244,7 +273,7 @@ class ShowOrchestrator:
                     return f"Playing {now_playing.get('Name')} (client resumed; seeked back to start)"
                 return f"Playing {now_playing.get('Name')}"
             if asyncio.get_running_loop().time() > deadline:
-                raise ShowFailed("Playback did not start on the projector")
+                return None
             await asyncio.sleep(self.timing.poll)
 
     async def _wait_until(self, check, timeout: float, error: str) -> None:

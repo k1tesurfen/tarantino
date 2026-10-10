@@ -39,7 +39,7 @@ def test_movie_wakes_projector_opens_jellyfin_and_plays(synced, fake_jellyfin, f
     show = start(synced, MOVIE)
 
     assert show["state"] == "playing", show
-    assert [s["step"] for s in show["steps"]] == ["resolve", "projector", "session", "play", "confirm"]
+    assert [s["step"] for s in show["steps"]] == ["resolve", "projector", "session", "play"]
     assert all(s["status"] == "done" for s in show["steps"])
     assert fake_projector.calls == ["wake", "launch"]
     assert fake_jellyfin.plays == [{"session": "session-1", "item_ids": [MOVIE], "start": 0}]
@@ -101,6 +101,26 @@ def test_series_plays_next_up_with_queue_and_resume(synced, fake_jellyfin):
     assert fake_jellyfin.seeks == []  # series resume is intended
 
 
+def test_stale_session_is_ignored_after_launching_the_app(synced, fake_jellyfin, fake_projector):
+    configure(synced, projector_address="192.0.2.50")
+    fake_jellyfin.sessions.append(projector_session(last_activity="2026-01-01T00:00:00.0000000Z"))
+    show = start(synced, MOVIE)
+    assert show["state"] == "playing", show
+    assert fake_projector.calls == ["wake", "launch"]
+    # PlayNow was only sent once the app had refreshed its session.
+    assert fake_jellyfin.activity_after_polls is None
+    assert len(fake_jellyfin.plays) == 1
+
+
+def test_play_is_resent_when_slow_client_drops_it(synced, fake_jellyfin):
+    fake_jellyfin.sessions.append(projector_session())
+    fake_jellyfin.dropped_plays = 1
+    show = start(synced, MOVIE)
+    assert show["state"] == "playing"
+    assert len(fake_jellyfin.plays) == 2
+    assert show["steps"][-1]["message"].endswith("(attempt 2)")
+
+
 def test_finished_series_fails(synced, fake_jellyfin):
     fake_jellyfin.sessions.append(projector_session())
     assert "no next episode" in start(synced, SERIES)["error"]
@@ -109,7 +129,9 @@ def test_finished_series_fails(synced, fake_jellyfin):
 def test_playback_not_confirmed_fails(synced, fake_jellyfin):
     fake_jellyfin.sessions.append(projector_session())
     fake_jellyfin.playback_starts = False
-    assert start(synced, MOVIE)["error"] == "Playback did not start on the projector"
+    show = start(synced, MOVIE)
+    assert show["error"] == "Playback did not start on the projector after 3 attempts"
+    assert len(fake_jellyfin.plays) == 3
 
 
 def test_new_show_replaces_running_one(synced):

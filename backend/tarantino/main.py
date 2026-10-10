@@ -20,6 +20,7 @@ PLACEHOLDER_HTML = """<!doctype html>
 </body></html>"""
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+logging.getLogger("httpx").setLevel(logging.WARNING)  # one line per Jellyfin request is too noisy
 
 
 def create_app(

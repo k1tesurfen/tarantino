@@ -1,5 +1,7 @@
 """Shared fixtures: an in-process fake Jellyfin and app factories."""
 
+from datetime import UTC, datetime
+
 import httpx
 import pytest
 from fastapi.testclient import TestClient
@@ -70,6 +72,8 @@ class FakeJellyfin:
         self.seeks: list[int] = []
         self.client_resume_ticks = 0  # position the client reports after PlayNow
         self.playback_starts = True
+        self.dropped_plays = 0  # PlayNow commands a slow client ignores before reacting
+        self.activity_after_polls: int | None = None  # session becomes fresh after N /Sessions polls
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
@@ -87,6 +91,12 @@ class FakeJellyfin:
                 200, json={"Items": self.items[start : start + limit], "TotalRecordCount": len(self.items)}
             )
         if path == "/Sessions":
+            if self.activity_after_polls is not None:
+                self.activity_after_polls -= 1
+                if self.activity_after_polls <= 0:
+                    for session in self.sessions:
+                        session["LastActivityDate"] = now_iso()
+                    self.activity_after_polls = None
             return httpx.Response(200, json=self.sessions)
         if path.startswith("/Sessions/") and path.endswith("/Playing"):
             session_id = path.split("/")[2]
@@ -94,7 +104,9 @@ class FakeJellyfin:
             item_ids = params["itemIds"].split(",")
             self.plays.append({"session": session_id, "item_ids": item_ids,
                                "start": int(params.get("startPositionTicks", 0))})
-            if self.playback_starts:
+            if self.dropped_plays > 0:
+                self.dropped_plays -= 1
+            elif self.playback_starts:
                 for session in self.sessions:
                     if session["Id"] == session_id:
                         session["NowPlayingItem"] = {"Id": item_ids[0], "Name": "Now playing"}
@@ -119,8 +131,13 @@ class FakeJellyfin:
         return httpx.MockTransport(self.handler)
 
 
-def projector_session(device_id: str = "projector-device") -> dict:
+def now_iso() -> str:
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
+def projector_session(device_id: str = "projector-device", last_activity: str | None = None) -> dict:
     return {
+        "LastActivityDate": last_activity or now_iso(),
         "Id": "session-1",
         "DeviceId": device_id,
         "DeviceName": "Projector",
@@ -171,6 +188,8 @@ class FakeAdb:
         self.p.foreground = "org.jellyfin.androidtv"
         if not self.p.jellyfin.sessions:  # the app registers its session with the server
             self.p.jellyfin.sessions.append(projector_session())
+        else:  # an old session exists; the app refreshes it after a while
+            self.p.jellyfin.activity_after_polls = 3
 
     async def status(self):
         from tarantino.projector.adb import AdbStatus
@@ -199,7 +218,7 @@ def fake_projector(fake_jellyfin) -> FakeProjector:
 
 
 FAST = Timing(poll=0.01, wake_timeout=0.2, app_launch_timeout=0.2, session_timeout=0.2,
-              session_settle=0, confirm_timeout=0.2)  # fmt: skip
+              session_settle=0, launch_settle=0, play_attempts=3, play_attempt_timeout=0.05)  # fmt: skip
 
 
 @pytest.fixture
