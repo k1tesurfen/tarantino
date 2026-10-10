@@ -1,5 +1,7 @@
 """Long-lived objects shared by the API routes, created in the app lifespan."""
 
+import asyncio
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
@@ -15,11 +17,13 @@ from tarantino.db import create_db_engine, make_session_factory, migrate
 from tarantino.events import EventBus
 from tarantino.jellyfin.client import JellyfinClient
 from tarantino.jellyfin.library import LibrarySync
-from tarantino.projector.adb import Adb
+from tarantino.projector.adb import Adb, AdbError, run_adb
 from tarantino.settings import SettingsStore
 from tarantino.shows.orchestrator import ShowOrchestrator, Timing
 
 LIBRARY_SYNC_MINUTES = 15
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -61,6 +65,9 @@ class Services:
         return services
 
     def start(self, run_jobs: bool = True) -> None:
+        if run_jobs and self.adb_factory is Adb:
+            # Warm up the adb server so the first status check or show is not slowed down.
+            self._adb_warmup = asyncio.create_task(_start_adb_server())
         if run_jobs and self.library:
             # First run happens immediately, then every LIBRARY_SYNC_MINUTES.
             self.scheduler.add_job(
@@ -76,6 +83,13 @@ class Services:
         if self.jellyfin:
             await self.jellyfin.aclose()
         self.engine.dispose()
+
+
+async def _start_adb_server() -> None:
+    try:
+        await run_adb(["start-server"], 20)
+    except AdbError as exc:
+        log.warning("Could not start the adb server: %s", exc)
 
 
 def get_services(request: Request) -> Services:
