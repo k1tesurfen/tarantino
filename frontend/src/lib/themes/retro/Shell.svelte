@@ -101,7 +101,8 @@
 		background-image: var(--grain), radial-gradient(ellipse at center, transparent 55%, rgb(120 80 30 / 0.28));
 		box-shadow: 0 0.6rem 1.8rem rgb(0 0 0 / 0.55);
 	}
-	.redapple :global(a) {
+	/* :where() keeps this at zero specificity, so components can colour their own links. */
+	:where(.redapple) :global(a) {
 		color: inherit;
 	}
 	.sr {

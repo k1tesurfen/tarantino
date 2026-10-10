@@ -82,7 +82,8 @@
 		font-family: 'Inter Variable', system-ui, sans-serif;
 		-webkit-font-smoothing: antialiased;
 	}
-	.aplex :global(a) {
+	/* :where() keeps this at zero specificity, so components can colour their own links. */
+	:where(.aplex) :global(a) {
 		color: inherit;
 	}
 	header {

@@ -38,8 +38,7 @@
 			<p class="shows">
 				Shows
 				{#each showtimeChips(programme!.date, room.showtimes) as chip, i}
-					{#if i}·{/if}
-					<span class={chip.state}>{chip.label}</span>
+					{#if i}<span class="sep">·</span>{/if}<span class={chip.state}>{chip.label}</span>
 				{/each}
 			</p>
 			<a class="admit" href="/tickets/{room.number}">Admit one ▸</a>
@@ -294,6 +293,9 @@
 	.shows {
 		margin: 0.2rem 0;
 		font-size: 0.9rem;
+	}
+	.sep {
+		margin: 0 0.35rem;
 	}
 	.shows .past {
 		color: var(--ink-soft);

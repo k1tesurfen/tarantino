@@ -81,8 +81,7 @@
 				<p class="shows">
 					Shows tonight:
 					{#each showtimeChips(cinema.programme?.date ?? '', screening.showtimes) as chip, i}
-						{#if i}·{/if}
-						<span class={chip.state}>{chip.label}</span>
+						{#if i}<span class="sep">·</span>{/if}<span class={chip.state}>{chip.label}</span>
 					{/each}
 					{#if screening.sold_out}<span class="sold">Sold out</span>{/if}
 				</p>
@@ -251,6 +250,9 @@
 	}
 	.shows {
 		margin: 0 0 0.9rem;
+	}
+	.sep {
+		margin: 0 0.35rem;
 	}
 	.shows .past {
 		opacity: 0.55;
