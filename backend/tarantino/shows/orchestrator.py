@@ -1,13 +1,12 @@
 """The show orchestrator: get a title playing on the projector.
 
-Steps: resolve the title -> wake the projector and open Jellyfin (ADB) ->
+Steps: resolve the title -> wake the projector and open Jellyfin ->
 wait for the Jellyfin session -> PlayNow and confirm playback (with resends).
 Only one show runs at a time; a new show cancels the running one.
 """
 
 import asyncio
 import logging
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
@@ -17,7 +16,9 @@ from tarantino.events import EventBus
 from tarantino.jellyfin.client import JellyfinClient, JellyfinError
 from tarantino.jellyfin.library import LibrarySync
 from tarantino.models import LibraryItem, Show
-from tarantino.projector.adb import JELLYFIN_PACKAGE, Adb, AdbError
+from tarantino.projector.adb import AdbError
+from tarantino.projector.projector import Projector, ProjectorError
+from tarantino.projector.remote import RemoteError
 from tarantino.settings import SettingsStore
 
 log = logging.getLogger(__name__)
@@ -92,7 +93,7 @@ class ShowOrchestrator:
         session_factory: sessionmaker,
         settings: SettingsStore,
         events: EventBus,
-        adb_factory: Callable[[str], Adb] = Adb,
+        projector: Projector,
         timing: Timing | None = None,
     ):
         self.jellyfin = jellyfin
@@ -100,7 +101,7 @@ class ShowOrchestrator:
         self.session_factory = session_factory
         self.settings = settings
         self.events = events
-        self.adb_factory = adb_factory
+        self.projector = projector
         self.timing = timing or Timing()
         self.current: RunningShow | None = None
 
@@ -162,7 +163,7 @@ class ShowOrchestrator:
         self._save_steps(running)
         try:
             result = await coro
-        except (JellyfinError, AdbError) as exc:
+        except (JellyfinError, AdbError, ProjectorError, RemoteError) as exc:
             step |= {"status": "failed", "message": str(exc)}
             self._save_steps(running)
             raise ShowFailed(f"{name}: {exc}") from exc
@@ -199,33 +200,13 @@ class ShowOrchestrator:
         return Plan(ids, resume, False, label)
 
     async def _prepare_projector(self, running: RunningShow) -> str:
-        address = self.settings.get().projector_address
-        if not address:
-            return "No projector address configured; assuming Jellyfin is already open"
-        adb = self.adb_factory(address)
-        if not await adb.reachable():
-            raise ShowFailed("Projector is not reachable on the network")
-        state = await adb.connect()
-        if state == "unauthorized":
-            raise ShowFailed("ADB is not authorised: accept the prompt on the projector")
-        if state != "device":
-            raise ShowFailed(f"ADB connection failed ({state})")
-
-        actions = []
-        if not await adb.screen_on():
-            await adb.wake()
-            await self._wait_until(adb.screen_on, self.timing.wake_timeout, "Projector did not wake up")
-            actions.append("woke projector")
-        if await adb.foreground_package() != JELLYFIN_PACKAGE:
-            running.app_launched_at = _now()
-            await adb.launch_jellyfin()
-
-            async def jellyfin_in_front() -> bool:
-                return await adb.foreground_package() == JELLYFIN_PACKAGE
-
-            await self._wait_until(jellyfin_in_front, self.timing.app_launch_timeout, "Jellyfin app did not open")
-            actions.append("opened Jellyfin")
-        return ", ".join(actions) or "Projector on, Jellyfin open"
+        started = _now()
+        result = await self.projector.prepare_for_jellyfin(
+            self.timing.poll, self.timing.wake_timeout, self.timing.app_launch_timeout
+        )
+        if result.launched_app:
+            running.app_launched_at = started
+        return result.message
 
     async def _wait_for_session(self, running: RunningShow) -> dict:
         device_id = self.settings.get().projector_device_id
@@ -274,13 +255,6 @@ class ShowOrchestrator:
                 return f"Playing {now_playing.get('Name')}"
             if asyncio.get_running_loop().time() > deadline:
                 return None
-            await asyncio.sleep(self.timing.poll)
-
-    async def _wait_until(self, check, timeout: float, error: str) -> None:
-        deadline = asyncio.get_running_loop().time() + timeout
-        while not await check():
-            if asyncio.get_running_loop().time() > deadline:
-                raise ShowFailed(error)
             await asyncio.sleep(self.timing.poll)
 
     # -- persistence & events -----------------------------------------------

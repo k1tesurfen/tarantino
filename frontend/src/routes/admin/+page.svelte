@@ -11,6 +11,8 @@
 		searchLibrary,
 		startShow,
 		subscribe,
+		finishPairing,
+		startPairing,
 		triggerLibrarySync,
 		updateSettings,
 		type AppSettings,
@@ -28,6 +30,8 @@
 	let error = $state<string | null>(null);
 
 	let addressInput = $state('');
+	let pairingCode = $state('');
+	let pairingError = $state<string | null>(null);
 	let query = $state('');
 	let results = $state<SampleItem[]>([]);
 
@@ -56,6 +60,20 @@
 		await refresh();
 	}
 
+	async function pair(step: 'start' | 'finish') {
+		pairingError = null;
+		try {
+			if (step === 'start') await startPairing();
+			else {
+				await finishPairing(pairingCode);
+				pairingCode = '';
+			}
+		} catch (e) {
+			pairingError = (e as Error).message;
+		}
+		await refresh();
+	}
+
 	async function syncNow() {
 		await triggerLibrarySync();
 		await refresh();
@@ -81,7 +99,6 @@
 	}
 
 	const formatTime = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString() : 'never');
-	const yesNo = (value: boolean | null | undefined) => (value == null ? '–' : value ? 'yes' : 'no');
 
 	onMount(() => {
 		refresh();
@@ -135,11 +152,26 @@
 			{#if projector?.address}
 				<dl>
 					<dt>Address</dt><dd>{projector.address}</dd>
-					<dt>Reachable</dt><dd>{yesNo(projector.reachable)}</dd>
+					<dt>Power</dt><dd>{projector.power ?? '–'}</dd>
+					<dt>Remote</dt><dd>{projector.remote ?? '–'}</dd>
 					<dt>ADB</dt><dd>{projector.adb ?? '–'}</dd>
-					<dt>Screen on</dt><dd>{yesNo(projector.screen_on)}</dd>
 					<dt>Foreground</dt><dd class="mono">{projector.foreground ?? '–'}</dd>
 				</dl>
+				{#if projector.remote === 'pairing'}
+					<form
+						class="inline"
+						onsubmit={(e) => {
+							e.preventDefault();
+							pair('finish');
+						}}
+					>
+						<input placeholder="Code shown on the projector" bind:value={pairingCode} maxlength="6" />
+						<button type="submit" disabled={pairingCode.trim().length < 6}>Pair</button>
+					</form>
+				{:else if projector.remote !== 'connected'}
+					<button class="ghost spaced" onclick={() => pair('start')}>Pair Android TV remote</button>
+				{/if}
+				{#if pairingError}<p class="error">{pairingError}</p>{/if}
 			{/if}
 			<form
 				class="inline"
@@ -494,6 +526,9 @@
 		color: #f3a1a1;
 		font-size: 0.85rem;
 		margin: 0.4rem 0 0;
+	}
+	.spaced {
+		margin-top: 0.5rem;
 	}
 	.section-head {
 		display: flex;

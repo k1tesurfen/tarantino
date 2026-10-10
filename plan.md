@@ -44,7 +44,11 @@ The specific addresses and names are kept out of the repo on purpose.
 ## 2. Decisions
 
 ### Playback
-- **Players:** Tarantino controls the Jellyfin Android TV app through the Jellyfin Sessions API. ADB over the network wakes the projector and launches the app when it isn't running. ADB is part of **V1**.
+- **Players:** Tarantino controls the Jellyfin Android TV app through the Jellyfin Sessions API.
+- **Projector control** (revised after testing in M2): in network standby the projector drops ADB and ping and only keeps Chromecast and the Android TV Remote service reachable. So:
+  - **Chromecast** wakes the projector from standby, by launching the Default Media Receiver.
+  - The **Android TV Remote protocol (v2)** reads power state and the current app and launches Jellyfin. It needs a one-time pairing from the admin page.
+  - **ADB** is only a fallback, used when it happens to be available. Wireless debugging on this projector's firmware disables itself.
 - **Conflicts:** a new start request always replaces whatever is playing.
 - **Movies:** always start from the beginning, even if partially watched.
 - **Series:** play the next-up episode (resume it if it was partially watched) and queue the following episodes so they autoplay.
@@ -287,6 +291,6 @@ These are needed before or during the milestones. Nothing from this list goes in
 
 | Slice | Scope |
 |---|---|
-| **V2: The Show** | Motorized screen via USB port power. Needs per-port power switching (`uhubctl`) or a switchable hub, to be researched once the screen exists. Lights and AVR via Home Assistant. Projector power-off and lights up at the end of a film. Pre-show (trailers before the feature). ESP32 firmware for the VHS recorder |
+| **V2: The Show** | Cast splash screen: show a cinema splash image or intro clip on the projector via the Cast Default Media Receiver while Jellyfin is being opened. Motorized screen via USB port power. Needs per-port power switching (`uhubctl`) or a switchable hub, to be researched once the screen exists. Lights and AVR via Home Assistant. Projector power-off and lights up at the end of a film. Pre-show (trailers before the feature). ESP32 firmware for the VHS recorder |
 | **V3: Home Assistant plugin** | Tarantino entities and services in HA |
 | **Later** | More cinema themes, more room presets (decades, director retrospectives, double features, sneak preview), stats/history page, remote access |

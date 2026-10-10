@@ -148,17 +148,77 @@ def projector_session(device_id: str = "projector-device", last_activity: str | 
 
 
 class FakeProjector:
-    """State of a fake Android TV projector, shared by all FakeAdb instances."""
+    """A fake Android TV projector.
+
+    Plays three roles: the RemoteLink (Android TV remote protocol), the Cast waker,
+    and the ADB fallback (via `adb_factory`).
+    """
 
     def __init__(self, jellyfin: FakeJellyfin):
         self.jellyfin = jellyfin
-        self.reachable = True
-        self.adb_state = "device"
-        self.screen_on = False
+        self.on = False
         self.foreground = "com.google.android.tvlauncher"
+        self.state = "connected"  # remote state
+        self.error = None
+        self.host = None
+        self.cast_works = True
+        self.adb_available = False
         self.calls: list[str] = []
 
-    def factory(self, address: str) -> "FakeAdb":
+    # -- RemoteLink interface --
+    def configure(self, host):
+        self.host = host
+
+    def stop(self):
+        pass
+
+    @property
+    def connected(self):
+        return self.state == "connected"
+
+    @property
+    def is_on(self):
+        return self.on if self.connected else None
+
+    @property
+    def current_app(self):
+        return self.foreground if self.connected else None
+
+    def launch_app(self, package):
+        self.calls.append("remote-launch")
+        self._open(package)
+
+    async def start_pairing(self):
+        self.state = "pairing"
+
+    async def finish_pairing(self, code):
+        from tarantino.projector.remote import RemoteError
+
+        if code != "ABC123":
+            raise RemoteError("Wrong code; start pairing again")
+        self.state = "connected"
+
+    # -- Cast waker --
+    async def wake(self, host):
+        from tarantino.projector.cast import CastError
+
+        if not self.cast_works:
+            raise CastError("Cast connection failed: timed out")
+        if self.on:
+            return False
+        self.calls.append("cast-wake")
+        self.on = True
+        return True
+
+    # -- shared --
+    def _open(self, package):
+        self.foreground = package
+        if not self.jellyfin.sessions:  # the app registers its session with the server
+            self.jellyfin.sessions.append(projector_session())
+        else:  # an old session exists; the app refreshes it after a while
+            self.jellyfin.activity_after_polls = 3
+
+    def adb_factory(self, address: str) -> "FakeAdb":
         return FakeAdb(self, address)
 
 
@@ -168,33 +228,20 @@ class FakeAdb:
         self.address = address
 
     async def reachable(self, timeout: float = 2) -> bool:
-        return self.p.reachable
+        return self.p.adb_available
 
     async def connect(self) -> str:
-        return self.p.adb_state
+        return "device" if self.p.adb_available else "disconnected"
 
     async def screen_on(self) -> bool:
-        return self.p.screen_on
+        return self.p.on
 
     async def foreground_package(self) -> str | None:
         return self.p.foreground
 
-    async def wake(self) -> None:
-        self.p.calls.append("wake")
-        self.p.screen_on = True
-
     async def launch_jellyfin(self) -> None:
-        self.p.calls.append("launch")
-        self.p.foreground = "org.jellyfin.androidtv"
-        if not self.p.jellyfin.sessions:  # the app registers its session with the server
-            self.p.jellyfin.sessions.append(projector_session())
-        else:  # an old session exists; the app refreshes it after a while
-            self.p.jellyfin.activity_after_polls = 3
-
-    async def status(self):
-        from tarantino.projector.adb import AdbStatus
-
-        return AdbStatus(self.p.reachable, self.p.adb_state, self.p.screen_on, self.p.foreground)
+        self.p.calls.append("adb-launch")
+        self.p._open("org.jellyfin.androidtv")
 
 
 @pytest.fixture
@@ -224,8 +271,8 @@ FAST = Timing(poll=0.01, wake_timeout=0.2, app_launch_timeout=0.2, session_timeo
 @pytest.fixture
 def client(settings, fake_jellyfin, fake_projector):
     app = create_app(
-        settings, jellyfin_transport=fake_jellyfin.transport, adb_factory=fake_projector.factory,
-        timing=FAST, run_jobs=False,
+        settings, jellyfin_transport=fake_jellyfin.transport, adb_factory=fake_projector.adb_factory,
+        remote=fake_projector, waker=fake_projector.wake, timing=FAST, run_jobs=False,
     )  # fmt: skip
     with TestClient(app) as test_client:
         yield test_client

@@ -1,7 +1,6 @@
 """Health checks of the subsystems shown on the admin dashboard."""
 
 from tarantino.jellyfin.client import JellyfinError
-from tarantino.projector.adb import JELLYFIN_PACKAGE, AdbError
 from tarantino.services import Services
 from tarantino.shows.orchestrator import find_projector_session
 
@@ -33,30 +32,7 @@ async def jellyfin_status(services: Services) -> dict:
 
 
 async def projector_status(services: Services) -> dict:
-    address = services.settings.get().projector_address
-    if not address:
-        return {"state": "unconfigured", "message": "Set the projector address in settings"}
-    adb = services.adb_factory(address)
-    try:
-        result = await adb.status()
-    except AdbError as exc:
-        return {"state": "error", "message": str(exc), "address": address}
-
-    status = {
-        "address": address,
-        "reachable": result.reachable,
-        "adb": result.adb_state,
-        "screen_on": result.screen_on,
-        "foreground": result.foreground_package,
-        "jellyfin_in_front": result.foreground_package == JELLYFIN_PACKAGE,
-    }
-    if not result.reachable:
-        return status | {"state": "error", "message": "Not reachable (is network debugging enabled?)"}
-    if result.adb_state == "unauthorized":
-        return status | {"state": "warning", "message": "Accept the ADB authorisation prompt on the projector"}
-    if result.adb_state != "device":
-        return status | {"state": "error", "message": f"ADB {result.adb_state}"}
-    return status | {"state": "ok", "message": None}
+    return await services.projector.status()
 
 
 async def session_status(services: Services) -> dict:

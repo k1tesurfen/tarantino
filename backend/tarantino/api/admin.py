@@ -9,6 +9,7 @@ from sqlalchemy import func, or_, select
 from tarantino import status
 from tarantino.jellyfin.client import JellyfinError
 from tarantino.models import LibraryItem
+from tarantino.projector.remote import RemoteError
 from tarantino.services import Services, get_services
 from tarantino.settings import AppSettings
 from tarantino.shows.orchestrator import find_projector_session
@@ -128,6 +129,30 @@ async def list_sessions(services: ServicesDep) -> list[dict]:
         for s in sessions
         if s.get("DeviceId") != "tarantino-core"
     ]
+
+
+@router.post("/projector/pairing/start")
+async def start_pairing(services: ServicesDep) -> dict:
+    """Ask the projector to show a pairing code on screen."""
+    services.projector.connect()
+    try:
+        await services.projector.remote.start_pairing()
+    except RemoteError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return {"state": services.projector.remote.state}
+
+
+class PairingCode(BaseModel):
+    code: str
+
+
+@router.post("/projector/pairing/finish")
+async def finish_pairing(services: ServicesDep, body: PairingCode) -> dict:
+    try:
+        await services.projector.remote.finish_pairing(body.code)
+    except RemoteError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return {"state": services.projector.remote.state}
 
 
 # -- shows ------------------------------------------------------------------

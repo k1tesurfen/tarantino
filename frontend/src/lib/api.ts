@@ -16,9 +16,9 @@ export type ProjectorStatus = {
 	state: SubsystemState;
 	message: string | null;
 	address?: string;
-	reachable?: boolean;
-	adb?: string;
-	screen_on?: boolean | null;
+	remote?: 'connected' | 'connecting' | 'unreachable' | 'unpaired' | 'pairing' | 'unconfigured';
+	adb?: 'device' | 'unavailable';
+	power?: 'on' | 'standby' | 'unknown';
 	foreground?: string | null;
 	jellyfin_in_front?: boolean;
 };
@@ -74,7 +74,10 @@ export type SampleItem = {
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
 	const response = await fetch(path, init);
-	if (!response.ok) throw new Error(`${init?.method ?? 'GET'} ${path} failed: ${response.status}`);
+	if (!response.ok) {
+		const detail = await response.json().then((b) => b?.detail).catch(() => null);
+		throw new Error(typeof detail === 'string' ? detail : `${init?.method ?? 'GET'} ${path} failed: ${response.status}`);
+	}
 	return response.json();
 }
 
@@ -100,6 +103,17 @@ export const startShow = (itemId: string) =>
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ item_id: itemId })
 	});
+
+const post = <T>(path: string, body?: unknown) =>
+	request<T>(path, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: body === undefined ? undefined : JSON.stringify(body)
+	});
+
+export const startPairing = () => post<{ state: string }>('/api/admin/projector/pairing/start');
+export const finishPairing = (code: string) =>
+	post<{ state: string }>('/api/admin/projector/pairing/finish', { code });
 
 /** Subscribe to server-sent events; returns an unsubscribe function. */
 export function subscribe(handlers: { show?: (show: Show) => void }): () => void {

@@ -41,7 +41,8 @@ def test_movie_wakes_projector_opens_jellyfin_and_plays(synced, fake_jellyfin, f
     assert show["state"] == "playing", show
     assert [s["step"] for s in show["steps"]] == ["resolve", "projector", "session", "play"]
     assert all(s["status"] == "done" for s in show["steps"])
-    assert fake_projector.calls == ["wake", "launch"]
+    assert fake_projector.calls == ["cast-wake", "remote-launch"]
+    assert show["steps"][1]["message"] == "woke projector (Cast), opened Jellyfin"
     assert fake_jellyfin.plays == [{"session": "session-1", "item_ids": [MOVIE], "start": 0}]
     assert fake_jellyfin.seeks == []
 
@@ -62,19 +63,37 @@ def test_configured_device_id_must_match(synced, fake_jellyfin):
     assert "session not found" in show["error"]
 
 
-def test_unauthorised_adb_fails_with_hint(synced, fake_projector):
+def test_jellyfin_already_in_front_needs_no_actions(synced, fake_jellyfin, fake_projector):
     configure(synced, projector_address="192.0.2.50")
-    fake_projector.adb_state = "unauthorized"
+    fake_projector.on, fake_projector.foreground = True, "org.jellyfin.androidtv"
+    fake_jellyfin.sessions.append(projector_session())
+    show = start(synced, MOVIE)
+    assert show["state"] == "playing"
+    assert show["steps"][1]["message"] == "Projector on, Jellyfin open"
+    assert fake_projector.calls == []
+
+
+def test_unpaired_remote_falls_back_to_adb(synced, fake_projector):
+    configure(synced, projector_address="192.0.2.50")
+    fake_projector.state = "unpaired"
+    fake_projector.adb_available = True
+    show = start(synced, MOVIE)
+    assert show["state"] == "playing", show
+    assert fake_projector.calls == ["cast-wake", "adb-launch"]
+
+
+def test_no_remote_and_no_adb_fails_with_hint(synced, fake_projector):
+    configure(synced, projector_address="192.0.2.50")
+    fake_projector.state = "unpaired"
     show = start(synced, MOVIE)
     assert show["state"] == "failed"
-    assert "accept the prompt" in show["error"]
-    assert show["steps"][-1] == show["steps"][1] | {"status": "failed"}
+    assert "remote not paired" in show["error"]
 
 
-def test_unreachable_projector_fails(synced, fake_projector):
+def test_cast_failure_fails(synced, fake_projector):
     configure(synced, projector_address="192.0.2.50")
-    fake_projector.reachable = False
-    assert "not reachable" in start(synced, MOVIE)["error"]
+    fake_projector.cast_works = False
+    assert "Cast connection failed" in start(synced, MOVIE)["error"]
 
 
 def test_movie_resumed_by_client_is_seeked_to_start(synced, fake_jellyfin):
@@ -106,7 +125,7 @@ def test_stale_session_is_ignored_after_launching_the_app(synced, fake_jellyfin,
     fake_jellyfin.sessions.append(projector_session(last_activity="2026-01-01T00:00:00.0000000Z"))
     show = start(synced, MOVIE)
     assert show["state"] == "playing", show
-    assert fake_projector.calls == ["wake", "launch"]
+    assert fake_projector.calls == ["cast-wake", "remote-launch"]
     # PlayNow was only sent once the app had refreshed its session.
     assert fake_jellyfin.activity_after_polls is None
     assert len(fake_jellyfin.plays) == 1
@@ -164,13 +183,24 @@ def test_sessions_listing_marks_projector(client, fake_jellyfin):
     assert session["is_projector"] and not session["selected"]
 
 
-def test_status_reports_projector_and_session(synced, fake_jellyfin):
+def test_status_reports_projector_and_session(synced, fake_jellyfin, fake_projector):
     configure(synced, projector_address="192.0.2.50")
     status = synced.get("/api/admin/status").json()
     assert status["projector"]["state"] == "ok"
-    assert status["projector"]["screen_on"] is False
+    assert status["projector"]["power"] == "standby"
+    assert status["projector"]["remote"] == "connected"
     assert status["session"]["state"] == "unconfigured"
 
     fake_jellyfin.sessions.append(projector_session())
     configure(synced, projector_device_id="projector-device")
     assert synced.get("/api/admin/status").json()["session"]["state"] == "ok"
+
+
+def test_pairing_flow(client, fake_projector):
+    configure(client, projector_address="192.0.2.50")
+    fake_projector.state = "unpaired"
+    assert client.get("/api/admin/status").json()["projector"]["state"] == "warning"
+    assert client.post("/api/admin/projector/pairing/start").json() == {"state": "pairing"}
+    response = client.post("/api/admin/projector/pairing/finish", json={"code": "WRONG1"})
+    assert response.status_code == 409
+    assert client.post("/api/admin/projector/pairing/finish", json={"code": "ABC123"}).json() == {"state": "connected"}

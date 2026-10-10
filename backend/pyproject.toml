@@ -17,6 +17,8 @@ dependencies = [
     "httpx==0.28.1",
     "apscheduler==3.11.3",
     "typer==0.27.2",
+    "pychromecast==14.0.10",
+    "androidtvremote2==0.3.2",
 ]
 
 [project.optional-dependencies]

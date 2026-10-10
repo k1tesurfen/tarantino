@@ -1,5 +1,5 @@
 import logging
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
 
 import httpx
@@ -10,6 +10,8 @@ from tarantino import __version__
 from tarantino.api import admin, events, images
 from tarantino.config import Settings, get_settings
 from tarantino.projector.adb import Adb
+from tarantino.projector.cast import cast_wake
+from tarantino.projector.remote import RemoteLink
 from tarantino.services import Services
 from tarantino.shows.orchestrator import Timing
 
@@ -29,13 +31,15 @@ def create_app(
     jellyfin_transport: httpx.AsyncBaseTransport | None = None,
     adb_factory: Callable[[str], Adb] = Adb,
     timing: Timing | None = None,
+    remote: RemoteLink | None = None,
+    waker: Callable[[str], Awaitable[bool]] = cast_wake,
     run_jobs: bool = True,
 ) -> FastAPI:
     settings = settings or get_settings()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        services = Services.create(settings, jellyfin_transport, adb_factory, timing)
+        services = Services.create(settings, jellyfin_transport, adb_factory, timing, remote, waker)
         app.state.services = services
         services.start(run_jobs=run_jobs)
         try:
