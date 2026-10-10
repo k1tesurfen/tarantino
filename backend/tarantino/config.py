@@ -34,13 +34,20 @@ class Settings(BaseSettings):
     ha_token: SecretStr | None = None
 
 
+SECRET_FILE = "secret.key"
+
+
 def load_secret(data_dir: Path) -> bytes:
-    """Per-installation signing key, created on first start."""
-    path = data_dir / "secret.key"
+    """Per-installation signing key, created on first start.
+
+    Group-readable, so the deploy user (member of the service group) can use the
+    CLI without the admin password.
+    """
+    path = data_dir / SECRET_FILE
     if not path.exists():
         data_dir.mkdir(parents=True, exist_ok=True)
         path.write_text(secrets.token_hex(32))
-        path.chmod(0o600)
+    path.chmod(0o640)
     return bytes.fromhex(path.read_text().strip())
 
 

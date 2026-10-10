@@ -13,6 +13,7 @@ from sqlalchemy import Engine
 from sqlalchemy.orm import sessionmaker
 
 from tarantino.config import Settings, load_secret
+from tarantino.configio.backups import BackupStore
 from tarantino.db import create_db_engine, make_session_factory, migrate
 from tarantino.events import EventBus
 from tarantino.jellyfin.client import JellyfinClient
@@ -41,6 +42,7 @@ class Services:
     projector: Projector
     programme: Programme
     secret: bytes
+    backups: BackupStore
     adb_factory: Callable[[str], Adb] = Adb
     jellyfin: JellyfinClient | None = None
     library: LibrarySync | None = None
@@ -66,7 +68,8 @@ class Services:
         programme.ensure_rooms()
         services = cls(
             env, engine, session_factory, settings, AsyncIOScheduler(), EventBus(), projector, programme,
-            load_secret(env.data_dir), adb_factory,
+            load_secret(env.data_dir), BackupStore(env.data_dir / "backups", session_factory, settings),
+            adb_factory,
         )  # fmt: skip
         if env.jellyfin_api_key:
             services.jellyfin = JellyfinClient(
@@ -90,6 +93,10 @@ class Services:
             self.scheduler.add_job(
                 self._sync_and_programme, "interval", minutes=LIBRARY_SYNC_MINUTES, id="library-sync",
                 next_run_time=datetime.now(), coalesce=True, max_instances=1,
+            )  # fmt: skip
+            self.scheduler.add_job(
+                self.backups.create, "cron", hour=3, minute=30, args=["nightly"], id="nightly-backup",
+                coalesce=True, max_instances=1,
             )  # fmt: skip
             # Hourly check catches the rollover hour (whatever it is set to) without rescheduling.
             self.scheduler.add_job(

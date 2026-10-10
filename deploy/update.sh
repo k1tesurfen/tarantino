@@ -6,6 +6,12 @@ set -euo pipefail
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$APP_DIR"
 
+echo "==> config backup"
+# Needs read access to the signing key (deploy user in the tarantino group, see install.sh).
+if ! "$APP_DIR/.venv/bin/tarantino" backup --reason pre-update; then
+    echo "WARNING: pre-update backup failed (is tarantino running? is $(id -un) in the tarantino group?)" >&2
+fi
+
 echo "==> git pull"
 git pull --ff-only
 

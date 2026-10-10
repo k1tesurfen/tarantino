@@ -216,3 +216,84 @@ export function imageUrl(
 	const query = params.toString();
 	return `/api/img/${itemId}/${type}${query ? `?${query}` : ''}`;
 }
+
+// -- rooms ---------------------------------------------------------------
+
+export type MovieFilters = {
+	watched: 'any' | 'unwatched' | 'watched';
+	favorite: 'any' | 'yes' | 'no';
+	genres_any: string[];
+	genres_none: string[];
+	tags_any: string[];
+	tags_none: string[];
+	official_ratings: string[];
+	year_min: number | null;
+	year_max: number | null;
+	min_community_rating: number | null;
+	min_critic_rating: number | null;
+	runtime_min: number | null;
+	runtime_max: number | null;
+};
+
+export type Weights = {
+	community_rating: number;
+	critic_rating: number;
+	recently_added: number;
+	never_shown: number;
+};
+
+export type Room = {
+	number: number;
+	name: string;
+	kind: 'movie' | 'series';
+	filters: MovieFilters;
+	weights: Weights;
+	active: boolean;
+};
+
+export type Facets = { genres: string[]; tags: string[]; official_ratings: string[] };
+
+const send = <T>(method: string, path: string, body?: unknown) =>
+	request<T>(path, {
+		method,
+		headers: { 'Content-Type': 'application/json' },
+		body: body === undefined ? undefined : JSON.stringify(body)
+	});
+
+export const getRooms = () => request<Room[]>('/api/admin/rooms');
+export const getPresets = () => request<Record<string, MovieFilters>>('/api/admin/rooms/presets');
+export const getFacets = () => request<Facets>('/api/admin/library/facets');
+export const createRoom = (room: Room) => send<Room>('POST', '/api/admin/rooms', room);
+export const updateRoom = (number: number, room: Room) => send<Room>('PUT', `/api/admin/rooms/${number}`, room);
+export const deleteRoom = (number: number) => send<void>('DELETE', `/api/admin/rooms/${number}`);
+export const previewFilters = (filters: MovieFilters) =>
+	send<{ count: number; sample: string[] }>('POST', '/api/admin/rooms/preview', { filters });
+
+// -- config export / import / backups -------------------------------------
+
+export type ImportPreview = {
+	settings_changed: Record<string, { from: unknown; to: unknown }>;
+	rooms_added: string[];
+	rooms_removed: string[];
+	rooms_changed: string[];
+	state_included: boolean;
+	series_assignments: number;
+	programme_entries: number;
+	unresolved_titles: string[];
+	remapped_titles: number;
+	exported_at: string;
+	tarantino_version: string;
+};
+
+export type BackupInfo = { name: string; reason: string; created_at: string; size: number };
+
+export const exportUrl = (state = true) => `/api/admin/config/export?state=${state}`;
+export const previewImport = (document: unknown) => send<ImportPreview>('POST', '/api/admin/config/import/preview', document);
+export const importConfig = (document: unknown) =>
+	send<{ imported: boolean; backup: string }>('POST', '/api/admin/config/import', document);
+export const listBackups = () => request<BackupInfo[]>('/api/admin/backups');
+export const createBackup = () => send<BackupInfo>('POST', '/api/admin/backups');
+export const backupUrl = (name: string) => `/api/admin/backups/${encodeURIComponent(name)}`;
+export const previewBackup = (name: string) => send<ImportPreview>('POST', `${backupUrl(name)}/preview`);
+export const restoreBackup = (name: string) =>
+	send<{ imported: boolean; backup: string }>('POST', `${backupUrl(name)}/restore`);

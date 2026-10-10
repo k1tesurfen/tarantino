@@ -39,6 +39,8 @@ if ! id "$SERVICE_USER" &>/dev/null; then
     useradd --system --home-dir "$DATA_DIR" --shell /usr/sbin/nologin "$SERVICE_USER"
 fi
 install -d -o "$SERVICE_USER" -g "$SERVICE_USER" -m 0750 "$DATA_DIR"
+# The deploy user may read backups and the signing key (CLI, pre-update backups).
+usermod -aG "$SERVICE_USER" "$DEPLOY_USER"
 install -d -o root -g "$SERVICE_USER" -m 0750 "$ETC_DIR"
 if [[ ! -f "$ENV_FILE" ]]; then
     install -o root -g "$SERVICE_USER" -m 0640 "$APP_DIR/deploy/env.example" "$ENV_FILE"
