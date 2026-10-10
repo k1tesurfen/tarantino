@@ -259,21 +259,23 @@
 		padding: 0;
 		border: 0;
 		border-radius: 0.4rem 0.4rem 0.2rem 0.2rem;
-		background: var(--surface-2);
+		background: #4a4a66;
 		box-shadow: inset 0 -3px 0 rgb(0 0 0 / 0.35);
 		cursor: pointer;
 		transition: background 0.12s, transform 0.12s;
 	}
 	button.seat:hover:not(:disabled) {
-		background: #34344a;
+		background: #6b6b8f;
 		transform: translateY(-1px);
 	}
 	.seat.aisle {
 		margin-right: 1.2rem;
 	}
 	.seat.taken {
-		background: #26262f;
-		opacity: 0.45;
+		background:
+			linear-gradient(45deg, transparent 45%, rgb(255 255 255 / 0.12) 45% 55%, transparent 55%),
+			#1b1b24;
+		box-shadow: none;
 		cursor: not-allowed;
 	}
 	.seat.mine {
