@@ -31,6 +31,7 @@
 				<img src={imageUrl(room.item.id, 'Primary', room.item.poster_tag, 500)} alt={room.item.name} loading="lazy" />
 				{#if room.sold_out}<span class="stamp">Sold out</span>{/if}
 			</a>
+			<div class="text">
 			<p class="room">Auditorium {room.number} · {room.name}</p>
 			<h3><a href="/film/{room.item.id}">{room.item.name}</a></h3>
 			<p class="facts">{[room.item.year, minutes(room), room.item.official_rating].filter(Boolean).join(' · ')}</p>
@@ -42,13 +43,16 @@
 				{/each}
 			</p>
 			<a class="admit" href="/tickets/{room.number}">Admit one ▸</a>
+			</div>
 		{:else}
 			<div class="poster missing">
 				<span>Missing reel</span>
 				<small>The projectionist is looking into it.</small>
 			</div>
-			<p class="room">Auditorium {room.number} · {room.name}</p>
-			<h3>Dark tonight</h3>
+			<div class="text">
+				<p class="room">Auditorium {room.number} · {room.name}</p>
+				<h3>Dark tonight</h3>
+			</div>
 		{/if}
 	</div>
 {/snippet}
@@ -182,6 +186,13 @@
 		box-shadow: 0.2rem 0.2rem 0 var(--ink);
 	}
 	.feature {
+		display: grid;
+		grid-template-columns: minmax(8rem, 13rem) 1fr;
+		gap: 1.1rem;
+		align-items: start;
+		min-width: 0;
+	}
+	.text {
 		display: flex;
 		flex-direction: column;
 		gap: 0.35rem;
@@ -225,7 +236,7 @@
 	.missing span {
 		font-family: var(--display);
 		text-transform: uppercase;
-		font-size: 1.8rem;
+		font-size: 1.15rem;
 		border: 3px solid var(--paper);
 		padding: 0.3rem 0.9rem;
 		transform: rotate(-6deg);
@@ -242,7 +253,7 @@
 		z-index: 1;
 		font-family: var(--display);
 		text-transform: uppercase;
-		font-size: 2rem;
+		font-size: 1.3rem;
 		color: var(--red);
 		border: 4px solid var(--red);
 		padding: 0.2rem 0.8rem;
@@ -258,7 +269,7 @@
 		border-width: 3px;
 	}
 	.room {
-		margin: 0.5rem 0 0;
+		margin: 0;
 		font-family: var(--condensed);
 		text-transform: uppercase;
 		letter-spacing: 0.18em;
@@ -382,10 +393,17 @@
 		font-size: 0.85rem;
 		color: var(--red);
 	}
-	@media (max-width: 720px) {
+	@media (max-width: 1000px) {
 		.features {
 			grid-template-columns: 1fr;
 		}
+	}
+	@media (max-width: 480px) {
+		.feature {
+			grid-template-columns: 7rem 1fr;
+		}
+	}
+	@media (max-width: 1000px) {
 		.plus {
 			justify-self: center;
 		}
