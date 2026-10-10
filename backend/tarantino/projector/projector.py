@@ -22,6 +22,7 @@ PLAY_STORE_PACKAGE = "com.android.vending"
 STORE_OPEN_TIMEOUT = 10.0
 STORE_SETTLE = 3.0  # let the details page render and focus its primary button
 STORE_LEAVE_TIMEOUT = 8.0
+REMOTE_CONNECT_TIMEOUT = 25.0  # the remote service comes back a few seconds after a wake
 
 
 class ProjectorError(Exception):
@@ -127,6 +128,9 @@ class Projector:
 
                 await self._wait(awake, wake_timeout, "Projector did not wake up", poll)
                 actions.append("woke projector (Cast)")
+
+        if not self.remote.connected and await self.remote.wait_connected(REMOTE_CONNECT_TIMEOUT):
+            actions.append("remote reconnected")
 
         launched = False
         if await self.current_app(address) != JELLYFIN_PACKAGE:

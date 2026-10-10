@@ -35,6 +35,8 @@ class RemoteLink:
         self.error: str | None = None
         self._remote: AndroidTVRemote | None = None
         self._task: asyncio.Task | None = None
+        self._connected = asyncio.Event()
+        self._retry_now = asyncio.Event()
 
     # -- lifecycle ----------------------------------------------------------
 
@@ -54,7 +56,7 @@ class RemoteLink:
         if self._remote:
             self._remote.disconnect()
         self._remote = None
-        self.state = "unconfigured"
+        self._set_state("unconfigured")
 
     def _new_remote(self, host: str) -> AndroidTVRemote:
         self.cert_dir.mkdir(parents=True, exist_ok=True)
@@ -67,27 +69,51 @@ class RemoteLink:
         remote = self._remote
         await remote.async_generate_cert_if_missing()
         while True:
-            self.state = "connecting"
+            self._set_state("connecting")
             try:
                 await remote.async_connect()
             except InvalidAuth:
-                self.state, self.error = "unpaired", "Pair the projector in the admin page"
+                self._set_state("unpaired", "Pair the projector in the admin page")
                 return
             except (CannotConnect, ConnectionClosed) as exc:
-                self.state, self.error = "unreachable", str(exc) or "Cannot connect"
-                await asyncio.sleep(RETRY_SECONDS)
+                self._set_state("unreachable", str(exc) or "Cannot connect")
+                self._retry_now.clear()
+                try:  # retry later, or right away when someone needs the remote
+                    await asyncio.wait_for(self._retry_now.wait(), RETRY_SECONDS)
+                except TimeoutError:
+                    pass
                 continue
-            self.state, self.error = "connected", None
+            self._set_state("connected")
             remote.add_is_available_updated_callback(self._on_available)
             remote.keep_reconnecting(self._on_invalid_auth)
             log.info("Android TV remote connected to %s", self.host)
             return
 
     def _on_available(self, available: bool) -> None:
-        self.state = "connected" if available else "unreachable"
+        self._set_state("connected" if available else "unreachable")
 
     def _on_invalid_auth(self) -> None:
-        self.state, self.error = "unpaired", "Pairing was revoked; pair again"
+        self._set_state("unpaired", "Pairing was revoked; pair again")
+
+    def _set_state(self, state: str, error: str | None = None) -> None:
+        self.state, self.error = state, error
+        if state == "connected":
+            self._connected.set()
+        else:
+            self._connected.clear()
+
+    async def wait_connected(self, timeout: float) -> bool:
+        """Wait for the connection (e.g. right after waking the projector); retries immediately."""
+        if self.connected:
+            return True
+        if self.state in ("unconfigured", "unpaired", "pairing"):
+            return False
+        self._retry_now.set()
+        try:
+            await asyncio.wait_for(self._connected.wait(), timeout)
+        except TimeoutError:
+            return False
+        return self.connected
 
     # -- pairing ------------------------------------------------------------
 
@@ -100,9 +126,9 @@ class RemoteLink:
         try:
             await self._remote.async_start_pairing()
         except (CannotConnect, ConnectionClosed) as exc:
-            self.state = "unreachable"
+            self._set_state("unreachable", str(exc))
             raise RemoteError(f"Cannot reach the projector: {exc}") from exc
-        self.state = "pairing"
+        self._set_state("pairing")
 
     async def finish_pairing(self, code: str) -> None:
         if self.state != "pairing" or not self._remote:

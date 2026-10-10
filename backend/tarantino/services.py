@@ -142,7 +142,7 @@ async def _start_adb_server() -> None:
     try:
         await run_adb(["start-server"], 20)
     except AdbError as exc:
-        log.warning("Could not start the adb server: %s", exc)
+        log.info("adb server not started (%s); ADB is only a fallback", exc)
 
 
 def get_services(request: Request) -> Services:

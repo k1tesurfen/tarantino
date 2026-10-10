@@ -164,6 +164,7 @@ class FakeProjector:
         self.cast_works = True
         self.adb_available = False
         self.store_opens_app = True  # False simulates an "Update" button having focus
+        self.reconnect_after_wake: float | None = None  # remote comes back this many seconds after a wake
         self.calls: list[str] = []
 
     # -- RemoteLink interface --
@@ -198,6 +199,16 @@ class FakeProjector:
         elif key == "KEYCODE_BACK":
             self.foreground = "com.google.android.tvlauncher"
 
+    async def wait_connected(self, timeout):
+        import asyncio
+
+        if self.state in ("unconfigured", "unpaired", "pairing"):
+            return False  # like RemoteLink: waiting cannot fix these
+        deadline = asyncio.get_running_loop().time() + timeout
+        while not self.connected and asyncio.get_running_loop().time() < deadline:
+            await asyncio.sleep(0.005)
+        return self.connected
+
     async def start_pairing(self):
         self.state = "pairing"
 
@@ -218,6 +229,10 @@ class FakeProjector:
             return False
         self.calls.append("cast-wake")
         self.on = True
+        if self.reconnect_after_wake is not None:
+            import asyncio
+
+            asyncio.get_running_loop().call_later(self.reconnect_after_wake, setattr, self, "state", "connected")
         return True
 
     # -- shared --

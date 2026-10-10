@@ -102,6 +102,28 @@ def test_store_not_opening_jellyfin_fails_and_backs_out(synced, fake_projector, 
     assert fake_projector.calls[-1] == "KEYCODE_BACK"
 
 
+def test_waits_for_the_remote_to_reconnect_after_a_wake(synced, fake_projector, monkeypatch):
+    # The remote drops in deep standby and only returns a few seconds after the Cast wake.
+    configure(synced, projector_address="192.0.2.50")
+    fake_projector.state = "unreachable"
+    fake_projector.reconnect_after_wake = 0.1
+    show = start(synced, MOVIE)
+    assert show["state"] == "playing", show
+    assert show["steps"][1]["message"] == "woke projector (Cast), remote reconnected, opened Jellyfin"
+    assert fake_projector.calls == ["cast-wake", "remote-launch", "KEYCODE_DPAD_CENTER"]
+
+
+def test_remote_that_never_returns_still_fails_clearly(synced, fake_projector, monkeypatch):
+    from tarantino.projector import projector
+
+    monkeypatch.setattr(projector, "REMOTE_CONNECT_TIMEOUT", 0.05)
+    configure(synced, projector_address="192.0.2.50")
+    fake_projector.state = "unreachable"
+    show = start(synced, MOVIE)
+    assert show["state"] == "failed"
+    assert "remote not paired/connected" in show["error"]
+
+
 def test_cast_failure_fails(synced, fake_projector):
     configure(synced, projector_address="192.0.2.50")
     fake_projector.cast_works = False
