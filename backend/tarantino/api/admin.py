@@ -155,6 +155,26 @@ async def finish_pairing(services: ServicesDep, body: PairingCode) -> dict:
     return {"state": services.projector.remote.state}
 
 
+class RemoteCommand(BaseModel):
+    key: str | None = None
+    link: str | None = None
+
+
+@router.post("/projector/remote")
+async def remote_command(services: ServicesDep, body: RemoteCommand) -> dict:
+    """Send a key (e.g. KEYCODE_HOME) or launch an app link via the Android TV remote; for diagnostics."""
+    services.projector.connect()
+    remote = services.projector.remote
+    try:
+        if body.key:
+            remote.send_key(body.key)
+        if body.link:
+            remote.launch_app(body.link)
+    except RemoteError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return {"power": remote.is_on, "current_app": remote.current_app}
+
+
 # -- shows ------------------------------------------------------------------
 
 
