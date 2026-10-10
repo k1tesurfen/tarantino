@@ -5,7 +5,8 @@
 
 <div class="board" class:small>
 	{#each lines as line}
-		<p>{line.toUpperCase()}</p>
+		<!-- like a real letter board: long lines get smaller letters instead of being cut -->
+		<p class:long={line.length > 30} class:longer={line.length > 42}>{line.toUpperCase()}</p>
 	{/each}
 </div>
 
@@ -41,6 +42,13 @@
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
+	}
+	p.long {
+		font-size: clamp(0.9rem, 2vw, 1.55rem);
+	}
+	p.longer {
+		font-size: clamp(0.8rem, 1.6vw, 1.2rem);
+		letter-spacing: 0.08em;
 	}
 	.small p {
 		font-size: clamp(0.9rem, 1.6vw, 1.2rem);

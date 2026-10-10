@@ -57,10 +57,10 @@
 	.bulbs {
 		fill: none;
 		stroke: #ffe7a3;
-		stroke-width: 6.5;
+		stroke-width: 9;
 		stroke-linecap: round;
-		stroke-dasharray: 0 15;
-		stroke-dashoffset: calc(var(--phase) * -5px);
+		stroke-dasharray: 0 21;
+		stroke-dashoffset: calc(var(--phase) * -7px);
 	}
 	.chase .bulbs {
 		animation: chase 1.8s infinite;
