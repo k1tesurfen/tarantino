@@ -7,6 +7,7 @@ Only one show runs at a time; a new show cancels the running one.
 
 import asyncio
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
@@ -60,6 +61,7 @@ class Plan:
 class RunningShow:
     id: int
     task: asyncio.Task | None = None
+    room_id: int | None = None
     steps: list[dict] = field(default_factory=list)
     app_launched_at: datetime | None = None  # set when we started the Jellyfin app
 
@@ -105,17 +107,19 @@ class ShowOrchestrator:
         self.projector = projector
         self.timing = timing or Timing()
         self.current: RunningShow | None = None
+        # Called with (room_id, item_id) when a show started from a room reaches "playing".
+        self.on_playing: Callable[[int, str], None] | None = None
 
     # -- public API ---------------------------------------------------------
 
-    async def start(self, item_id: str, trigger: str) -> int:
+    async def start(self, item_id: str, trigger: str, room_id: int | None = None) -> int:
         """Start a show for a library item and return its id (runs in the background)."""
         item = self._get_item(item_id)
         if item is None:
             raise LookupError(f"Unknown item {item_id}")
         await self.cancel_current()
-        show_id = self._create_show(item, trigger)
-        running = RunningShow(id=show_id)
+        show_id = self._create_show(item, trigger, room_id)
+        running = RunningShow(id=show_id, room_id=room_id)
         running.task = asyncio.create_task(self._run(running, item))
         self.current = running
         return show_id
@@ -157,6 +161,8 @@ class ShowOrchestrator:
             self._finish(running, "failed", f"Unexpected error: {exc}")
         else:
             self._finish(running, "playing", None)
+            if running.room_id is not None and self.on_playing:
+                self.on_playing(running.room_id, item.id)
 
     async def _step(self, running: RunningShow, name: str, coro):
         step = {"step": name, "status": "running", "message": None, "at": _now().isoformat()}
@@ -264,10 +270,10 @@ class ShowOrchestrator:
         with self.session_factory() as session:
             return session.get(LibraryItem, item_id)
 
-    def _create_show(self, item: LibraryItem, trigger: str) -> int:
+    def _create_show(self, item: LibraryItem, trigger: str, room_id: int | None) -> int:
         with self.session_factory.begin() as session:
-            show = Show(trigger=trigger, item_id=item.id, item_name=item.name, state="running",
-                        steps=[], created_at=_now())  # fmt: skip
+            show = Show(trigger=trigger, room_id=room_id, item_id=item.id, item_name=item.name,
+                        state="running", steps=[], created_at=_now())  # fmt: skip
             session.add(show)
             session.flush()
             show_id = show.id
@@ -297,6 +303,7 @@ def _show_dict(show: Show) -> dict:
     return {
         "id": show.id,
         "trigger": show.trigger,
+        "room_id": show.room_id,
         "item_id": show.item_id,
         "item_name": show.item_name,
         "state": show.state,

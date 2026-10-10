@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from sqlalchemy import JSON, Boolean, Date, DateTime, Float, Integer, String, Text
+from sqlalchemy import JSON, Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from tarantino.db import Base
@@ -62,6 +62,7 @@ class Show(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     trigger: Mapped[str] = mapped_column(String(16))  # "admin" | "cinema" | "vhs"
+    room_id: Mapped[int | None] = mapped_column(ForeignKey("room.id", ondelete="SET NULL"))
     item_id: Mapped[str] = mapped_column(String(32))
     item_name: Mapped[str] = mapped_column(String)
     state: Mapped[str] = mapped_column(String(16), index=True)  # running | playing | failed | cancelled
@@ -69,3 +70,46 @@ class Show(Base):
     error: Mapped[str | None] = mapped_column(String)
     created_at: Mapped[datetime] = mapped_column(DateTime, index=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class Room(Base):
+    """An auditorium (movies) or lounge (series); `number` is also the cassette number."""
+
+    __tablename__ = "room"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    number: Mapped[int] = mapped_column(Integer, unique=True)
+    name: Mapped[str] = mapped_column(String)
+    kind: Mapped[str] = mapped_column(String(16))  # "movie" | "series"
+    filters: Mapped[dict] = mapped_column(JSON, default=dict)
+    weights: Mapped[dict] = mapped_column(JSON, default=dict)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class ProgrammeEntry(Base):
+    """What a room shows on one cinema day."""
+
+    __tablename__ = "programme_entry"
+    __table_args__ = (UniqueConstraint("cinema_date", "room_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    cinema_date: Mapped[date] = mapped_column(Date, index=True)
+    room_id: Mapped[int] = mapped_column(ForeignKey("room.id", ondelete="CASCADE"))
+    item_id: Mapped[str | None] = mapped_column(String(32))  # None: room closed today
+    showtimes: Mapped[list] = mapped_column(JSON, default=list)
+    source: Mapped[str] = mapped_column(String(16))  # "generated" | "override"
+    first_started_at: Mapped[datetime | None] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class SeriesAssignment(Base):
+    """A series that sticks to a series room until it is finished or dropped."""
+
+    __tablename__ = "series_assignment"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    room_id: Mapped[int] = mapped_column(ForeignKey("room.id", ondelete="CASCADE"), index=True)
+    series_id: Mapped[str] = mapped_column(String(32))
+    started_at: Mapped[datetime] = mapped_column(DateTime)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime)
+    dropped_at: Mapped[datetime | None] = mapped_column(DateTime)

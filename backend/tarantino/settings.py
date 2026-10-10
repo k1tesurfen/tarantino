@@ -13,10 +13,16 @@ from tarantino.models import Setting
 
 class AppSettings(BaseModel):
     projector_address: str | None = Field(
-        None, description="Projector host or IP for network ADB, optionally with :port (default 5555)."
+        None, description="Projector host or IP (Cast, Android TV remote, ADB fallback)."
     )
     projector_device_id: str | None = Field(
         None, description="Jellyfin DeviceId of the projector's Jellyfin app session."
+    )
+
+    rollover_hour: int = Field(5, ge=0, le=23, description="Hour at which the cinema day changes.")
+    movie_cooldown_days: int = Field(30, ge=0, le=365, description="Days before a movie may be programmed again.")
+    series_cooldown_days: int = Field(
+        7, ge=0, le=365, description="Days before a non-sticky series may be offered again."
     )
 
     @field_validator("projector_address", "projector_device_id")

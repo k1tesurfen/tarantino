@@ -63,6 +63,39 @@ export type Show = {
 	finished_at: string | null;
 };
 
+export type ProgrammeItem = {
+	id: string;
+	type: 'movie' | 'series';
+	name: string;
+	year: number | null;
+	runtime_minutes: number | null;
+	genres: string[];
+	overview: string | null;
+	tagline: string | null;
+	official_rating: string | null;
+	community_rating: number | null;
+	poster_tag: string | null;
+	backdrop_tag: string | null;
+	logo_tag: string | null;
+	played: boolean;
+	favorite: boolean;
+	unplayed_count: number | null;
+	trailer_urls: string[];
+};
+
+export type ProgrammeRoom = {
+	number: number;
+	name: string;
+	kind: 'movie' | 'series';
+	item: ProgrammeItem | null;
+	showtimes: string[];
+	source: 'generated' | 'override' | null;
+	sold_out: boolean;
+	sticky: boolean;
+};
+
+export type Programme = { date: string; rooms: ProgrammeRoom[] };
+
 export type SampleItem = {
 	id: string;
 	type: string;
@@ -115,13 +148,19 @@ export const startPairing = () => post<{ state: string }>('/api/admin/projector/
 export const finishPairing = (code: string) =>
 	post<{ state: string }>('/api/admin/projector/pairing/finish', { code });
 
+export const getProgramme = () => request<Programme>('/api/admin/programme');
+export const rerollRoom = (room?: number) => post<Programme>('/api/admin/programme/reroll', { room: room ?? null });
+export const dropSeries = (room: number) => post<Programme>(`/api/admin/rooms/${room}/drop-series`);
+export const playRoom = (room: number) => post<Show>(`/api/admin/rooms/${room}/play`);
+
+type EventHandlers = { show?: (show: Show) => void; programme?: () => void };
+
 /** Subscribe to server-sent events; returns an unsubscribe function. */
-export function subscribe(handlers: { show?: (show: Show) => void }): () => void {
+export function subscribe(handlers: EventHandlers): () => void {
 	const source = new EventSource('/api/events');
-	if (handlers.show) {
-		const onShow = handlers.show;
-		source.addEventListener('show', (e) => onShow(JSON.parse((e as MessageEvent).data)));
-	}
+	const { show, programme } = handlers;
+	if (show) source.addEventListener('show', (e) => show(JSON.parse((e as MessageEvent).data)));
+	if (programme) source.addEventListener('programme', () => programme());
 	return () => source.close();
 }
 

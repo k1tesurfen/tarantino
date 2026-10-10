@@ -11,18 +11,25 @@
 		searchLibrary,
 		startShow,
 		subscribe,
+		dropSeries,
 		finishPairing,
+		getProgramme,
+		playRoom,
+		rerollRoom,
 		startPairing,
 		triggerLibrarySync,
 		updateSettings,
 		type AppSettings,
 		type JellyfinSession,
+		type Programme,
 		type SampleItem,
 		type Show,
 		type Status
 	} from '$lib/api';
 
 	let status = $state<Status | null>(null);
+	let programme = $state<Programme | null>(null);
+	let programmeError = $state<string | null>(null);
 	let settings = $state<AppSettings | null>(null);
 	let sessions = $state<JellyfinSession[]>([]);
 	let shows = $state<Show[]>([]);
@@ -58,6 +65,21 @@
 		settings = await updateSettings(changes);
 		addressInput = settings.projector_address ?? '';
 		await refresh();
+	}
+
+	async function loadProgramme() {
+		programme = await getProgramme().catch(() => programme);
+	}
+
+	async function programmeAction(action: () => Promise<unknown>) {
+		programmeError = null;
+		try {
+			const result = await action();
+			if (result && typeof result === 'object' && 'rooms' in result) programme = result as Programme;
+			else if (result && typeof result === 'object' && 'steps' in result) upsertShow(result as Show);
+		} catch (e) {
+			programmeError = (e as Error).message;
+		}
 	}
 
 	async function pair(step: 'start' | 'finish') {
@@ -105,7 +127,9 @@
 		loadSettings();
 		getShows().then((s) => (shows = s)).catch(() => {});
 		getLibrarySample(12).then((s) => (sample = s)).catch(() => {});
+		loadProgramme();
 		const unsubscribe = subscribe({
+			programme: loadProgramme,
 			show: (show) => {
 				upsertShow(show);
 				if (show.state !== 'running') refresh();
@@ -193,6 +217,55 @@
 				</dl>
 			{/if}
 		</Card>
+	</section>
+
+	<section>
+		<div class="section-head">
+			<h2>Today's programme {programme ? `· ${new Date(programme.date).toLocaleDateString()}` : ''}</h2>
+			<button class="ghost" onclick={() => programmeAction(() => rerollRoom())}>Re-roll whole day</button>
+		</div>
+		{#if programmeError}<p class="error">{programmeError}</p>{/if}
+		{#if !programme}
+			<p class="muted">Loading…</p>
+		{:else}
+			<div class="programme">
+				{#each programme.rooms as room (room.number)}
+					<article class="room" class:closed={!room.item}>
+						{#if room.item}
+							<img src={imageUrl(room.item.id, 'Primary', room.item.poster_tag, 160)} alt="" loading="lazy" />
+						{:else}
+							<div class="poster-placeholder"></div>
+						{/if}
+						<div class="room-body">
+							<small class="muted">{room.number} · {room.name}</small>
+							<strong>{room.item ? room.item.name : 'Closed today'}</strong>
+							{#if room.item}
+								<small class="muted">
+									{room.item.year ?? ''}
+									{room.item.runtime_minutes ? `· ${room.item.runtime_minutes} min` : ''}
+									{room.item.unplayed_count != null ? `· ${room.item.unplayed_count} unwatched episodes` : ''}
+								</small>
+								<small class="times">{room.showtimes.join(' · ')}</small>
+							{/if}
+							<div class="badges">
+								{#if room.sold_out}<span class="badge sold">sold out</span>{/if}
+								{#if room.sticky}<span class="badge sticky">sticky</span>{/if}
+								{#if room.source === 'override'}<span class="badge">override</span>{/if}
+							</div>
+							<div class="room-actions">
+								{#if room.item}
+									<button onclick={() => programmeAction(() => playRoom(room.number))}>Play</button>
+								{/if}
+								<button class="ghost" onclick={() => programmeAction(() => rerollRoom(room.number))}>Re-roll</button>
+								{#if room.sticky}
+									<button class="ghost" onclick={() => programmeAction(() => dropSeries(room.number))}>Drop</button>
+								{/if}
+							</div>
+						</div>
+					</article>
+				{/each}
+			</div>
+		{/if}
 	</section>
 
 	<section>
@@ -526,6 +599,70 @@
 		color: #f3a1a1;
 		font-size: 0.85rem;
 		margin: 0.4rem 0 0;
+	}
+	.programme {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(21rem, 1fr));
+		gap: 0.75rem;
+	}
+	.room {
+		display: flex;
+		gap: 0.8rem;
+		background: var(--panel);
+		border: 1px solid var(--line);
+		border-radius: 0.4rem;
+		padding: 0.6rem;
+	}
+	.room.closed {
+		opacity: 0.6;
+	}
+	.room img,
+	.poster-placeholder {
+		width: 4.5rem;
+		aspect-ratio: 2 / 3;
+		object-fit: cover;
+		border-radius: 0.25rem;
+		background: var(--bg);
+		flex: none;
+	}
+	.room-body {
+		display: flex;
+		flex-direction: column;
+		gap: 0.2rem;
+		min-width: 0;
+	}
+	.times {
+		color: var(--accent);
+	}
+	.badges {
+		display: flex;
+		gap: 0.3rem;
+	}
+	.badge {
+		font-size: 0.7rem;
+		text-transform: uppercase;
+		border: 1px solid #3a3c42;
+		border-radius: 999px;
+		padding: 0 0.45rem;
+		color: var(--muted);
+	}
+	.badge.sold {
+		border-color: #e57373;
+		color: #f3a1a1;
+	}
+	.badge.sticky {
+		border-color: var(--accent);
+		color: var(--accent);
+	}
+	.room-actions {
+		display: flex;
+		gap: 0.4rem;
+		margin-top: auto;
+		padding-top: 0.3rem;
+	}
+	.room-actions button {
+		padding: 0.25rem 0.6rem;
+		font-size: 0.85rem;
 	}
 	.spaced {
 		margin-top: 0.5rem;

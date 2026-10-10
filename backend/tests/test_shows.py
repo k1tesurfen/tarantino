@@ -181,11 +181,18 @@ def test_unknown_item_is_404(synced):
 
 
 def test_settings_roundtrip_and_validation(client):
-    assert client.get("/api/admin/settings").json() == {"projector_address": None, "projector_device_id": None}
+    assert client.get("/api/admin/settings").json() == {
+        "projector_address": None,
+        "projector_device_id": None,
+        "rollover_hour": 5,
+        "movie_cooldown_days": 30,
+        "series_cooldown_days": 7,
+    }
     response = client.patch("/api/admin/settings", json={"projector_address": "  192.0.2.50 "})
     assert response.json()["projector_address"] == "192.0.2.50"
     assert client.patch("/api/admin/settings", json={"projector_address": ""}).json()["projector_address"] is None
     assert client.patch("/api/admin/settings", json={"nope": 1}).status_code == 422
+    assert client.patch("/api/admin/settings", json={"rollover_hour": 24}).status_code == 422
 
 
 def test_sessions_listing_marks_projector(client, fake_jellyfin):

@@ -20,6 +20,7 @@ from tarantino.jellyfin.library import LibrarySync
 from tarantino.projector.adb import Adb, AdbError, run_adb
 from tarantino.projector.cast import cast_wake
 from tarantino.projector.projector import Projector
+from tarantino.programme.engine import Programme, ProgrammeError
 from tarantino.projector.remote import RemoteLink
 from tarantino.settings import SettingsStore
 from tarantino.shows.orchestrator import ShowOrchestrator, Timing
@@ -38,6 +39,7 @@ class Services:
     scheduler: AsyncIOScheduler
     events: EventBus
     projector: Projector
+    programme: Programme
     adb_factory: Callable[[str], Adb] = Adb
     jellyfin: JellyfinClient | None = None
     library: LibrarySync | None = None
@@ -59,8 +61,10 @@ class Services:
         settings = SettingsStore(session_factory)
         remote = remote or RemoteLink(env.data_dir / "androidtv")
         projector = Projector(settings, remote, adb_factory, waker)
+        programme = Programme(session_factory, settings)
+        programme.ensure_rooms()
         services = cls(
-            env, engine, session_factory, settings, AsyncIOScheduler(), EventBus(), projector, adb_factory
+            env, engine, session_factory, settings, AsyncIOScheduler(), EventBus(), projector, programme, adb_factory
         )
         if env.jellyfin_api_key:
             services.jellyfin = JellyfinClient(
@@ -71,6 +75,7 @@ class Services:
                 services.jellyfin, services.library, session_factory, services.settings,
                 services.events, projector, timing,
             )  # fmt: skip
+            services.shows.on_playing = services._on_room_playing
         return services
 
     def start(self, run_jobs: bool = True) -> None:
@@ -79,12 +84,40 @@ class Services:
             self._adb_warmup = asyncio.create_task(_start_adb_server())
         self.projector.connect()
         if run_jobs and self.library:
-            # First run happens immediately, then every LIBRARY_SYNC_MINUTES.
+            # Sync first (immediately, then every LIBRARY_SYNC_MINUTES), then make sure today exists.
             self.scheduler.add_job(
-                self.library.run, "interval", minutes=LIBRARY_SYNC_MINUTES, id="library-sync",
+                self._sync_and_programme, "interval", minutes=LIBRARY_SYNC_MINUTES, id="library-sync",
                 next_run_time=datetime.now(), coalesce=True, max_instances=1,
             )  # fmt: skip
+            # Hourly check catches the rollover hour (whatever it is set to) without rescheduling.
+            self.scheduler.add_job(
+                self.ensure_programme, "cron", minute=1, id="programme", coalesce=True, max_instances=1
+            )
         self.scheduler.start()
+
+    async def _sync_and_programme(self) -> None:
+        await self.library.run()
+        await self.ensure_programme()
+
+    async def ensure_programme(self) -> None:
+        if await asyncio.to_thread(self.programme.ensure_day):
+            self.events.publish("programme", {"date": self.programme.today().isoformat()})
+
+    def _on_room_playing(self, room_id: int, item_id: str) -> None:
+        self.programme.mark_playing(room_id, item_id)
+        self.events.publish("programme", {"date": self.programme.today().isoformat()})
+
+    async def start_room(self, room_number: int, trigger: str) -> int:
+        """Start today's title of a room (cinema site, cassette, admin)."""
+        if self.shows is None:
+            raise ProgrammeError("Jellyfin is not configured")
+        await self.ensure_programme()
+        room, entry = self.programme.entry_for_room(room_number)
+        if not room.active:
+            raise ProgrammeError(f"{room.name} is closed")
+        if entry is None or entry.item_id is None:
+            raise ProgrammeError(f"Nothing is showing in {room.name} today")
+        return await self.shows.start(entry.item_id, trigger, room_id=room.id)
 
     async def close(self) -> None:
         self.scheduler.shutdown(wait=False)

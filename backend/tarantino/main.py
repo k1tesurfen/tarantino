@@ -7,7 +7,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse
 
 from tarantino import __version__
-from tarantino.api import admin, events, images
+from tarantino.api import admin, events, images, programme, rooms
 from tarantino.config import Settings, get_settings
 from tarantino.projector.adb import Adb
 from tarantino.projector.cast import cast_wake
@@ -59,6 +59,8 @@ def create_app(
     app.include_router(admin.router)
     app.include_router(images.router)
     app.include_router(events.router)
+    app.include_router(programme.router)
+    app.include_router(rooms.router)
 
     frontend_dir = settings.frontend_dir.resolve()
 
