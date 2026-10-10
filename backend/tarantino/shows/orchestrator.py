@@ -39,6 +39,7 @@ class Timing:
     session_timeout: float = 40.0
     session_settle: float = 2.0
     launch_settle: float = 5.0  # extra time after the app was (re)started by us
+    store_settle: float = 3.0  # Play Store page render time before pressing "Open"
     play_attempts: int = 3
     play_attempt_timeout: float = 8.0  # resend PlayNow if playback has not started by then
 
@@ -202,7 +203,7 @@ class ShowOrchestrator:
     async def _prepare_projector(self, running: RunningShow) -> str:
         started = _now()
         result = await self.projector.prepare_for_jellyfin(
-            self.timing.poll, self.timing.wake_timeout, self.timing.app_launch_timeout
+            self.timing.poll, self.timing.wake_timeout, self.timing.app_launch_timeout, self.timing.store_settle
         )
         if result.launched_app:
             running.app_launched_at = started

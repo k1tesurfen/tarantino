@@ -15,6 +15,15 @@ from tarantino.projector.remote import RemoteLink
 from tarantino.settings import SettingsStore
 
 
+# The Jellyfin Android TV app declares no deep links, and the remote protocol only
+# opens links, so open its Play Store page and press OK on the focused "Open" button.
+JELLYFIN_STORE_LINK = f"https://play.google.com/store/apps/details?id={JELLYFIN_PACKAGE}"
+PLAY_STORE_PACKAGE = "com.android.vending"
+STORE_OPEN_TIMEOUT = 10.0
+STORE_SETTLE = 3.0  # let the details page render and focus its primary button
+STORE_LEAVE_TIMEOUT = 8.0
+
+
 class ProjectorError(Exception):
     pass
 
@@ -66,16 +75,39 @@ class Projector:
         adb = await self._adb(address)
         return await adb.foreground_package() if adb else None
 
-    async def launch_jellyfin(self, address: str) -> None:
+    async def launch_jellyfin(self, address: str, poll: float = 0.5, store_settle: float = STORE_SETTLE) -> None:
         if self.remote.connected:
-            self.remote.launch_app(JELLYFIN_PACKAGE)
+            await self._launch_via_play_store(poll, store_settle)
             return
         adb = await self._adb(address)
         if adb is None:
             raise ProjectorError("Cannot open Jellyfin: remote not paired/connected and ADB unavailable")
         await adb.launch_jellyfin()
 
-    async def prepare_for_jellyfin(self, poll: float, wake_timeout: float, launch_timeout: float) -> PrepareResult:
+    async def _launch_via_play_store(self, poll: float, store_settle: float) -> None:
+        self.remote.launch_app(JELLYFIN_STORE_LINK)
+
+        async def store_in_front() -> bool:
+            return self.remote.current_app == PLAY_STORE_PACKAGE
+
+        await self._wait(store_in_front, STORE_OPEN_TIMEOUT, "Play Store page for Jellyfin did not open", poll)
+        await asyncio.sleep(store_settle)
+        self.remote.send_key("KEYCODE_DPAD_CENTER")
+
+        async def store_left() -> bool:
+            return self.remote.current_app != PLAY_STORE_PACKAGE
+
+        try:
+            await self._wait(store_left, STORE_LEAVE_TIMEOUT, "", poll)
+        except ProjectorError:
+            self.remote.send_key("KEYCODE_BACK")
+            raise ProjectorError(
+                "Play Store did not open Jellyfin (is an app update pending? Open Jellyfin once manually)"
+            ) from None
+
+    async def prepare_for_jellyfin(
+        self, poll: float, wake_timeout: float, launch_timeout: float, store_settle: float = STORE_SETTLE
+    ) -> PrepareResult:
         """Make sure the projector is on and the Jellyfin app is in front."""
         address = self.connect()
         if not address:
@@ -98,7 +130,7 @@ class Projector:
 
         launched = False
         if await self.current_app(address) != JELLYFIN_PACKAGE:
-            await self.launch_jellyfin(address)
+            await self.launch_jellyfin(address, poll, store_settle)
             launched = True
 
             async def in_front() -> bool:

@@ -41,7 +41,7 @@ def test_movie_wakes_projector_opens_jellyfin_and_plays(synced, fake_jellyfin, f
     assert show["state"] == "playing", show
     assert [s["step"] for s in show["steps"]] == ["resolve", "projector", "session", "play"]
     assert all(s["status"] == "done" for s in show["steps"])
-    assert fake_projector.calls == ["cast-wake", "remote-launch"]
+    assert fake_projector.calls == ["cast-wake", "remote-launch", "KEYCODE_DPAD_CENTER"]
     assert show["steps"][1]["message"] == "woke projector (Cast), opened Jellyfin"
     assert fake_jellyfin.plays == [{"session": "session-1", "item_ids": [MOVIE], "start": 0}]
     assert fake_jellyfin.seeks == []
@@ -90,6 +90,18 @@ def test_no_remote_and_no_adb_fails_with_hint(synced, fake_projector):
     assert "remote not paired" in show["error"]
 
 
+def test_store_not_opening_jellyfin_fails_and_backs_out(synced, fake_projector, monkeypatch):
+    from tarantino.projector import projector
+
+    monkeypatch.setattr(projector, "STORE_LEAVE_TIMEOUT", 0.05)
+    configure(synced, projector_address="192.0.2.50")
+    fake_projector.store_opens_app = False
+    show = start(synced, MOVIE)
+    assert show["state"] == "failed"
+    assert "Play Store did not open Jellyfin" in show["error"]
+    assert fake_projector.calls[-1] == "KEYCODE_BACK"
+
+
 def test_cast_failure_fails(synced, fake_projector):
     configure(synced, projector_address="192.0.2.50")
     fake_projector.cast_works = False
@@ -125,7 +137,7 @@ def test_stale_session_is_ignored_after_launching_the_app(synced, fake_jellyfin,
     fake_jellyfin.sessions.append(projector_session(last_activity="2026-01-01T00:00:00.0000000Z"))
     show = start(synced, MOVIE)
     assert show["state"] == "playing", show
-    assert fake_projector.calls == ["cast-wake", "remote-launch"]
+    assert fake_projector.calls == ["cast-wake", "remote-launch", "KEYCODE_DPAD_CENTER"]
     # PlayNow was only sent once the app had refreshed its session.
     assert fake_jellyfin.activity_after_polls is None
     assert len(fake_jellyfin.plays) == 1

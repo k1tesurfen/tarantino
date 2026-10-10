@@ -163,6 +163,7 @@ class FakeProjector:
         self.host = None
         self.cast_works = True
         self.adb_available = False
+        self.store_opens_app = True  # False simulates an "Update" button having focus
         self.calls: list[str] = []
 
     # -- RemoteLink interface --
@@ -184,9 +185,18 @@ class FakeProjector:
     def current_app(self):
         return self.foreground if self.connected else None
 
-    def launch_app(self, package):
+    def launch_app(self, link):
+        # Like the real device: no deep link for Jellyfin, but the store page opens.
         self.calls.append("remote-launch")
-        self._open(package)
+        if link == "https://play.google.com/store/apps/details?id=org.jellyfin.androidtv":
+            self.foreground = "com.android.vending"
+
+    def send_key(self, key):
+        self.calls.append(key)
+        if key == "KEYCODE_DPAD_CENTER" and self.foreground == "com.android.vending" and self.store_opens_app:
+            self._open("org.jellyfin.androidtv")
+        elif key == "KEYCODE_BACK":
+            self.foreground = "com.google.android.tvlauncher"
 
     async def start_pairing(self):
         self.state = "pairing"
@@ -265,7 +275,7 @@ def fake_projector(fake_jellyfin) -> FakeProjector:
 
 
 FAST = Timing(poll=0.01, wake_timeout=0.2, app_launch_timeout=0.2, session_timeout=0.2,
-              session_settle=0, launch_settle=0, play_attempts=3, play_attempt_timeout=0.05)  # fmt: skip
+              session_settle=0, launch_settle=0, store_settle=0, play_attempts=3, play_attempt_timeout=0.05)  # fmt: skip
 
 
 @pytest.fixture
