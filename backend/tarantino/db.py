@@ -1,0 +1,42 @@
+from pathlib import Path
+
+from alembic import command
+from alembic.config import Config
+from sqlalchemy import Engine, create_engine, event
+from sqlalchemy.orm import DeclarativeBase, sessionmaker
+
+MIGRATIONS_DIR = Path(__file__).parent / "migrations"
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+def create_db_engine(data_dir: Path) -> Engine:
+    data_dir.mkdir(parents=True, exist_ok=True)
+    engine = create_engine(
+        f"sqlite:///{data_dir / 'tarantino.db'}",
+        connect_args={"check_same_thread": False},
+    )
+
+    @event.listens_for(engine, "connect")
+    def _sqlite_pragmas(dbapi_connection, _record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
+    return engine
+
+
+def make_session_factory(engine: Engine) -> sessionmaker:
+    return sessionmaker(engine, expire_on_commit=False)
+
+
+def migrate(engine: Engine) -> None:
+    """Bring the database schema up to date (runs on every startup)."""
+    config = Config()
+    config.set_main_option("script_location", str(MIGRATIONS_DIR))
+    with engine.begin() as connection:
+        config.attributes["connection"] = connection
+        command.upgrade(config, "head")
