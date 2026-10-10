@@ -1,7 +1,7 @@
 <script lang="ts">
 	/**
-	 * Big sign letters outlined with light bulbs: the slab letters are painted, and
-	 * a dotted stroke with round caps along their contour forms the bulbs.
+	 * Big sign letters outlined with light bulbs: a dotted stroke with round caps
+	 * along the letter contour forms the bulbs; the painted faces sit crisp on top.
 	 */
 	let { text, chase = true }: { text: string; chase?: boolean } = $props();
 
@@ -21,9 +21,7 @@
 			</feMerge>
 		</filter>
 	</defs>
-	<!-- painted letter faces -->
-	<text class="face" x={width / 2} y="112" textLength={width - 50} lengthAdjust="spacingAndGlyphs">{label}</text>
-	<!-- three phase-shifted bulb strings -->
+	<!-- three phase-shifted bulb strings, behind the letters so their glow cannot blur them -->
 	{#each [0, 1, 2] as phase}
 		<text
 			class="bulbs"
@@ -34,6 +32,8 @@
 			lengthAdjust="spacingAndGlyphs">{label}</text
 		>
 	{/each}
+	<!-- crisp painted letter faces on top -->
+	<text class="face" x={width / 2} y="112" textLength={width - 50} lengthAdjust="spacingAndGlyphs">{label}</text>
 </svg>
 
 <style>
@@ -50,9 +50,10 @@
 		text-anchor: middle;
 	}
 	.face {
-		fill: #7d1018;
-		stroke: #3a0a0e;
-		stroke-width: 3;
+		fill: #c01a28;
+		stroke: #2a0508;
+		stroke-width: 2.5;
+		paint-order: stroke;
 	}
 	.bulbs {
 		fill: none;
