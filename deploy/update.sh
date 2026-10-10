@@ -11,11 +11,17 @@ git pull --ff-only
 
 "$APP_DIR/deploy/build.sh"
 
+for unit in tarantino.service tarantino-mdns.service; do
+    if ! sed "s|@APP_DIR@|$APP_DIR|g" "deploy/$unit" | cmp -s - "/etc/systemd/system/$unit"; then
+        echo "WARNING: $unit changed. Re-run: sudo $APP_DIR/deploy/install.sh" >&2
+    fi
+done
+
 echo "==> restart"
 sudo /usr/bin/systemctl restart tarantino.service
 
 for _ in $(seq 1 20); do
-    if curl -fsS http://localhost/api/health; then
+    if curl -fsS http://localhost/api/health 2>/dev/null; then
         echo
         exit 0
     fi

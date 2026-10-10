@@ -9,7 +9,8 @@ Type=simple
 ExecStart=@APP_DIR@/deploy/mdns-alias.sh tarantino.local
 Restart=always
 RestartSec=10
-DynamicUser=true
+User=tarantino
+Group=tarantino
 
 [Install]
 WantedBy=multi-user.target
