@@ -128,7 +128,7 @@
 							<div class="lounge-shade"></div>
 							<div class="lounge-content">
 								<p class="room-name">
-									Lounge {room.number} · {room.name}
+									{room.number} · {room.name}
 									{#if room.sticky}<span class="running">Now running</span>{/if}
 								</p>
 								<h3><a href="/film/{room.item.id}">{room.item.name}</a></h3>
@@ -143,7 +143,7 @@
 							</div>
 						{:else}
 							<div class="lounge-content">
-								<p class="room-name">Lounge {room.number} · {room.name}</p>
+								<p class="room-name">{room.number} · {room.name}</p>
 								<h3>Closed today</h3>
 							</div>
 						{/if}
@@ -208,6 +208,7 @@
 		position: relative;
 		padding: 0 clamp(1rem, 4vw, 3rem) clamp(2.5rem, 7vh, 4.5rem);
 		max-width: 44rem;
+		margin-left: max(0px, calc((100vw - 100rem) / 2));
 	}
 	.eyebrow,
 	.room-name {
@@ -314,6 +315,8 @@
 	.section {
 		padding: 3rem clamp(1rem, 4vw, 3rem) 1rem;
 		scroll-margin-top: 4rem;
+		max-width: 100rem;
+		margin: 0 auto;
 	}
 	.section-head {
 		display: flex;
@@ -335,7 +338,7 @@
 	}
 	.grid {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+		grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
 		gap: 2rem 1.5rem;
 	}
 	.card {
@@ -431,7 +434,7 @@
 
 	.lounges {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(min(26rem, 100%), 1fr));
+		grid-template-columns: repeat(auto-fit, minmax(min(24rem, 100%), 1fr));
 		gap: 1.25rem;
 	}
 	.lounge-card {

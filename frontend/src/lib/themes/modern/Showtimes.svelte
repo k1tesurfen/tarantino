@@ -4,16 +4,21 @@
 	let { date, times, href }: { date: string; times: string[]; href?: string } = $props();
 
 	const states = $derived(showtimeStates(date, times));
+	// Fake showtimes, but the reel always waits: after the last one there is a late show.
+	const lateShow = $derived(times.length > 0 && !states.includes('next'));
 </script>
 
 <div class="times">
 	{#each times as time, i}
 		{#if href}
-			<a class="time {states[i]}" {href} title={states[i] === 'past' ? 'Already started, but we hold the reel for you' : 'Get tickets'}>{time}</a>
+			<a class="time {states[i]}" {href} title={states[i] === 'past' ? 'Already started, but the reel waits for you' : 'Get tickets'}>{time}</a>
 		{:else}
 			<span class="time {states[i]}">{time}</span>
 		{/if}
 	{/each}
+	{#if lateShow}
+		{#if href}<a class="time next" {href}>Late show</a>{:else}<span class="time next">Late show</span>{/if}
+	{/if}
 </div>
 
 <style>
@@ -43,7 +48,6 @@
 	}
 	.time.past {
 		color: var(--muted);
-		text-decoration: line-through;
-		text-decoration-color: color-mix(in srgb, var(--muted) 60%, transparent);
+		opacity: 0.6;
 	}
 </style>
