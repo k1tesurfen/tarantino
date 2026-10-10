@@ -1,0 +1,32 @@
+# Local-only instructions and private environment values
+CLAUDE.md
+.claude/
+.private-words
+
+# Secrets
+.env
+.env.*
+!deploy/env.example
+
+# Config exports / backups (contain addresses and RFID UIDs)
+*.tarantino.json
+backups/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+
+# Node / frontend
+node_modules/
+frontend/build/
+frontend/.svelte-kit/
+
+# Local data
+*.sqlite
+*.sqlite3
+*.db
+
+# OS
+.DS_Store
