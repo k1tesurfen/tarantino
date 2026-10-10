@@ -9,7 +9,6 @@ from tarantino.models import LibraryItem, Room
 from tarantino.programme.rules import PRESETS, MovieFilters, Weights
 from tarantino.services import Services, get_services
 
-# TODO(M4): protect with the admin login.
 router = APIRouter(prefix="/api/admin", tags=["rooms"])
 
 ServicesDep = Annotated[Services, Depends(get_services)]

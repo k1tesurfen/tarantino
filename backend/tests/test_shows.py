@@ -181,13 +181,13 @@ def test_unknown_item_is_404(synced):
 
 
 def test_settings_roundtrip_and_validation(client):
-    assert client.get("/api/admin/settings").json() == {
-        "projector_address": None,
-        "projector_device_id": None,
-        "rollover_hour": 5,
-        "movie_cooldown_days": 30,
-        "series_cooldown_days": 7,
-    }
+    defaults = client.get("/api/admin/settings").json()
+    assert defaults["projector_address"] is None
+    assert (defaults["rollover_hour"], defaults["movie_cooldown_days"]) == (5, 30)
+    assert (defaults["theme_modern_name"], defaults["theme_retro_name"]) == ("apLex", "Red Apple Cinema")
+    assert client.patch("/api/admin/settings", json={"ha_url": "http://ha.example:8123/"}).json()["ha_url"] == (
+        "http://ha.example:8123"
+    )
     response = client.patch("/api/admin/settings", json={"projector_address": "  192.0.2.50 "})
     assert response.json()["projector_address"] == "192.0.2.50"
     assert client.patch("/api/admin/settings", json={"projector_address": ""}).json()["projector_address"] is None

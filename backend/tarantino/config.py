@@ -5,6 +5,7 @@ Only secrets and deployment paths live here. Everything a user configures
 and is covered by the config export.
 """
 
+import secrets
 from functools import lru_cache
 from pathlib import Path
 
@@ -31,6 +32,16 @@ class Settings(BaseSettings):
 
     admin_password: SecretStr | None = None
     ha_token: SecretStr | None = None
+
+
+def load_secret(data_dir: Path) -> bytes:
+    """Per-installation signing key, created on first start."""
+    path = data_dir / "secret.key"
+    if not path.exists():
+        data_dir.mkdir(parents=True, exist_ok=True)
+        path.write_text(secrets.token_hex(32))
+        path.chmod(0o600)
+    return bytes.fromhex(path.read_text().strip())
 
 
 @lru_cache

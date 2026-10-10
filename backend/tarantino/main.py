@@ -3,10 +3,11 @@ from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
 
 import httpx
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse
 
 from tarantino import __version__
+from tarantino import auth
 from tarantino.api import admin, events, images, programme, rooms
 from tarantino.config import Settings, get_settings
 from tarantino.projector.adb import Adb
@@ -56,11 +57,13 @@ def create_app(
     def health() -> dict:
         return {"status": "ok", "version": __version__}
 
-    app.include_router(admin.router)
+    admin_only = [Depends(auth.require_admin)]
+    app.include_router(auth.router)
+    app.include_router(admin.router, dependencies=admin_only)
+    app.include_router(programme.router, dependencies=admin_only)
+    app.include_router(rooms.router, dependencies=admin_only)
     app.include_router(images.router)
     app.include_router(events.router)
-    app.include_router(programme.router)
-    app.include_router(rooms.router)
 
     frontend_dir = settings.frontend_dir.resolve()
 

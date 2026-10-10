@@ -109,7 +109,7 @@ class Programme:
                 return 0
             ctx = self._context(session, day)
             ctx.used |= {e.item_id for e in existing.values() if e.item_id}
-            for room in self._generation_order(session, missing):
+            for room in self._generation_order(session, ctx, missing):
                 session.add(self._generate(session, ctx, room))
         log.info("Programme %s: generated %d rooms", day, len(missing))
         return len(missing)
@@ -133,7 +133,7 @@ class Programme:
                 if room.id in entries:
                     session.delete(entries[room.id])
             session.flush()
-            for room in self._generation_order(session, rooms):
+            for room in self._generation_order(session, ctx, rooms):
                 session.add(self._generate(session, ctx, room))
 
     def swap(self, room_number: int, item_id: str, day: date | None = None) -> None:
@@ -236,10 +236,18 @@ class Programme:
             )
         )
 
-    def _generation_order(self, session: Session, rooms: list[Room]) -> list[Room]:
-        """Sticky series rooms first, so their series are reserved before random picks."""
+    def _generation_order(self, session: Session, ctx: _Context, rooms: list[Room]) -> list[Room]:
+        """Sticky series first (their series are reserved), then the most restrictive rooms,
+        so broad rooms cannot use up the few titles a narrow room (e.g. horror) can show."""
         sticky = {r.id for r in rooms if r.kind == "series" and self._active_assignment(session, r.id)}
-        return sorted(rooms, key=lambda r: (r.id not in sticky, r.number))
+
+        def pool_size(room: Room) -> int:
+            if room.kind != "movie":
+                return len(ctx.series)
+            filters = MovieFilters.model_validate(room.filters or {})
+            return sum(filters.matches(m) for m in ctx.movies)
+
+        return sorted(rooms, key=lambda r: (r.id not in sticky, pool_size(r), r.number))
 
     def _context(self, session: Session, day: date) -> _Context:
         items = session.scalars(select(LibraryItem)).all()

@@ -7,7 +7,6 @@ from pydantic import BaseModel
 from tarantino.programme.engine import ProgrammeError
 from tarantino.services import Services, get_services
 
-# TODO(M4): protect with the admin login.
 router = APIRouter(prefix="/api/admin", tags=["programme"])
 
 ServicesDep = Annotated[Services, Depends(get_services)]

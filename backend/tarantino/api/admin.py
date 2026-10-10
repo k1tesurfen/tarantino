@@ -14,7 +14,6 @@ from tarantino.services import Services, get_services
 from tarantino.settings import AppSettings
 from tarantino.shows.orchestrator import find_projector_session
 
-# TODO(M4): protect with the admin login.
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 ServicesDep = Annotated[Services, Depends(get_services)]
@@ -27,10 +26,15 @@ def _require_jellyfin(services: Services) -> None:
 
 @router.get("/status")
 async def get_status(services: ServicesDep) -> dict:
-    jellyfin, projector, session = await asyncio.gather(
-        status.jellyfin_status(services), status.projector_status(services), status.session_status(services)
-    )
-    return {"jellyfin": jellyfin, "projector": projector, "session": session}
+    checks = {
+        "jellyfin": status.jellyfin_status(services),
+        "projector": status.projector_status(services),
+        "session": status.session_status(services),
+        "media": status.media_status(services),
+        "home_assistant": status.home_assistant_status(services),
+    }
+    results = await asyncio.gather(*checks.values())
+    return dict(zip(checks, results))
 
 
 # -- settings ---------------------------------------------------------------

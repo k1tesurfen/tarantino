@@ -31,9 +31,36 @@ export type SessionStatus = {
 	paused?: boolean;
 };
 
-export type Status = { jellyfin: JellyfinStatus; projector: ProjectorStatus; session: SessionStatus };
+export type MediaStatus = {
+	state: SubsystemState;
+	message: string | null;
+	mounts: { path: string; ok: boolean; message: string }[];
+};
 
-export type AppSettings = { projector_address: string | null; projector_device_id: string | null };
+export type HomeAssistantStatus = { state: SubsystemState; message: string | null; url?: string };
+
+export type Status = {
+	jellyfin: JellyfinStatus;
+	projector: ProjectorStatus;
+	session: SessionStatus;
+	media: MediaStatus;
+	home_assistant: HomeAssistantStatus;
+};
+
+export type AppSettings = {
+	projector_address: string | null;
+	projector_device_id: string | null;
+	rollover_hour: number;
+	movie_cooldown_days: number;
+	series_cooldown_days: number;
+	theme_modern_name: string;
+	theme_retro_name: string;
+	default_theme: 'modern' | 'retro';
+	ha_url: string | null;
+	media_paths: string[];
+};
+
+export type AdminSession = { password_set: boolean; authenticated: boolean };
 
 export type JellyfinSession = {
 	device_id: string;
@@ -105,8 +132,15 @@ export type SampleItem = {
 	played: boolean;
 };
 
+export class Unauthorized extends Error {}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
 	const response = await fetch(path, init);
+	if (response.status === 401 && !path.endsWith('/login')) {
+		window.dispatchEvent(new CustomEvent('tarantino:unauthorized'));
+		throw new Unauthorized('Login required');
+	}
+	if (response.status === 204) return undefined as T;
 	if (!response.ok) {
 		const detail = await response.json().then((b) => b?.detail).catch(() => null);
 		throw new Error(typeof detail === 'string' ? detail : `${init?.method ?? 'GET'} ${path} failed: ${response.status}`);
@@ -147,6 +181,12 @@ const post = <T>(path: string, body?: unknown) =>
 export const startPairing = () => post<{ state: string }>('/api/admin/projector/pairing/start');
 export const finishPairing = (code: string) =>
 	post<{ state: string }>('/api/admin/projector/pairing/finish', { code });
+
+export const getSession = () => request<AdminSession>('/api/admin/session');
+export const login = (password: string) => post<{ authenticated: boolean }>('/api/admin/login', { password });
+export const logout = () => post<{ authenticated: boolean }>('/api/admin/logout');
+export const swapRoom = (room: number, itemId: string) =>
+	post<Programme>('/api/admin/programme/swap', { room, item_id: itemId });
 
 export const getProgramme = () => request<Programme>('/api/admin/programme');
 export const rerollRoom = (room?: number) => post<Programme>('/api/admin/programme/reroll', { room: room ?? null });
