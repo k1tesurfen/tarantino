@@ -44,3 +44,28 @@ class LibraryItem(Base):
     episode_count: Mapped[int | None] = mapped_column(Integer)  # series only
 
     synced_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+
+
+class Setting(Base):
+    """One admin setting (see tarantino.settings.AppSettings); part of the config export."""
+
+    __tablename__ = "setting"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[object] = mapped_column(JSON)
+
+
+class Show(Base):
+    """One attempt to start something on the projector, with its step log."""
+
+    __tablename__ = "show"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    trigger: Mapped[str] = mapped_column(String(16))  # "admin" | "cinema" | "vhs"
+    item_id: Mapped[str] = mapped_column(String(32))
+    item_name: Mapped[str] = mapped_column(String)
+    state: Mapped[str] = mapped_column(String(16), index=True)  # running | playing | failed | cancelled
+    steps: Mapped[list] = mapped_column(JSON, default=list)
+    error: Mapped[str | None] = mapped_column(String)
+    created_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime)

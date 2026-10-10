@@ -1,7 +1,9 @@
 """Health checks of the subsystems shown on the admin dashboard."""
 
 from tarantino.jellyfin.client import JellyfinError
+from tarantino.projector.adb import JELLYFIN_PACKAGE, AdbError
 from tarantino.services import Services
+from tarantino.shows.orchestrator import find_projector_session
 
 
 async def jellyfin_status(services: Services) -> dict:
@@ -28,3 +30,53 @@ async def jellyfin_status(services: Services) -> dict:
     if library.last_error:
         return status | {"state": "warning", "message": f"Last library sync failed: {library.last_error}"}
     return status | {"state": "ok", "message": None}
+
+
+async def projector_status(services: Services) -> dict:
+    address = services.settings.get().projector_address
+    if not address:
+        return {"state": "unconfigured", "message": "Set the projector address in settings"}
+    adb = services.adb_factory(address)
+    try:
+        result = await adb.status()
+    except AdbError as exc:
+        return {"state": "error", "message": str(exc), "address": address}
+
+    status = {
+        "address": address,
+        "reachable": result.reachable,
+        "adb": result.adb_state,
+        "screen_on": result.screen_on,
+        "foreground": result.foreground_package,
+        "jellyfin_in_front": result.foreground_package == JELLYFIN_PACKAGE,
+    }
+    if not result.reachable:
+        return status | {"state": "error", "message": "Not reachable (is network debugging enabled?)"}
+    if result.adb_state == "unauthorized":
+        return status | {"state": "warning", "message": "Accept the ADB authorisation prompt on the projector"}
+    if result.adb_state != "device":
+        return status | {"state": "error", "message": f"ADB {result.adb_state}"}
+    return status | {"state": "ok", "message": None}
+
+
+async def session_status(services: Services) -> dict:
+    if services.jellyfin is None or services.library is None:
+        return {"state": "unconfigured", "message": "Jellyfin is not configured"}
+    device_id = services.settings.get().projector_device_id
+    try:
+        user_id = await services.library.resolve_user()
+        sessions = await services.jellyfin.sessions(controllable_by_user_id=user_id, active_within_seconds=120)
+    except JellyfinError as exc:
+        return {"state": "error", "message": str(exc)}
+    session = find_projector_session(sessions, device_id)
+    if session is None:
+        message = "Projector's Jellyfin app is not running" if device_id else "Select the projector's device below"
+        return {"state": "warning" if device_id else "unconfigured", "message": message}
+    now_playing = session.get("NowPlayingItem") or {}
+    return {
+        "state": "ok",
+        "message": None,
+        "device_name": session.get("DeviceName"),
+        "now_playing": now_playing.get("Name"),
+        "paused": (session.get("PlayState") or {}).get("IsPaused"),
+    }

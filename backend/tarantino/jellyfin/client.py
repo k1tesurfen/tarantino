@@ -78,5 +78,42 @@ class JellyfinClient:
             if not items or start >= page.get("TotalRecordCount", 0):
                 return
 
+    async def sessions(self, controllable_by_user_id: str | None = None, active_within_seconds: int = 900) -> list[dict]:
+        params: dict[str, Any] = {"activeWithinSeconds": active_within_seconds}
+        if controllable_by_user_id:
+            params["controllableByUserId"] = controllable_by_user_id
+        return await self._get_json("/Sessions", **params)
+
+    async def play(self, session_id: str, item_ids: list[str], start_position_ticks: int = 0) -> None:
+        await self._request(
+            "POST",
+            f"/Sessions/{session_id}/Playing",
+            params={
+                "playCommand": "PlayNow",
+                "itemIds": ",".join(item_ids),
+                "startPositionTicks": start_position_ticks,
+            },
+        )
+
+    async def seek(self, session_id: str, position_ticks: int) -> None:
+        await self._request(
+            "POST", f"/Sessions/{session_id}/Playing/Seek", params={"seekPositionTicks": position_ticks}
+        )
+
+    async def next_up(self, user_id: str, series_id: str) -> dict | None:
+        page = await self._get_json(
+            "/Shows/NextUp", userId=user_id, seriesId=series_id, enableResumable="true",
+            enableRewatching="false", limit=1, enableUserData="true",
+        )  # fmt: skip
+        items = page.get("Items", [])
+        return items[0] if items else None
+
+    async def episodes(self, series_id: str, user_id: str, start_item_id: str, limit: int) -> list[dict]:
+        page = await self._get_json(
+            f"/Shows/{series_id}/Episodes", userId=user_id, startItemId=start_item_id,
+            limit=limit, enableUserData="true", isMissing="false",
+        )  # fmt: skip
+        return page.get("Items", [])
+
     async def get_image(self, item_id: str, image_type: str, params: dict[str, Any]) -> httpx.Response:
         return await self._request("GET", f"/Items/{item_id}/Images/{image_type}", params=params)

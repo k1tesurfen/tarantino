@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Callable
 from contextlib import asynccontextmanager
 
 import httpx
@@ -6,9 +7,11 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse
 
 from tarantino import __version__
-from tarantino.api import admin, images
+from tarantino.api import admin, events, images
 from tarantino.config import Settings, get_settings
+from tarantino.projector.adb import Adb
 from tarantino.services import Services
+from tarantino.shows.orchestrator import Timing
 
 PLACEHOLDER_HTML = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>tarantino</title></head>
@@ -23,13 +26,15 @@ def create_app(
     settings: Settings | None = None,
     *,
     jellyfin_transport: httpx.AsyncBaseTransport | None = None,
+    adb_factory: Callable[[str], Adb] = Adb,
+    timing: Timing | None = None,
     run_jobs: bool = True,
 ) -> FastAPI:
     settings = settings or get_settings()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        services = Services.create(settings, jellyfin_transport)
+        services = Services.create(settings, jellyfin_transport, adb_factory, timing)
         app.state.services = services
         services.start(run_jobs=run_jobs)
         try:
@@ -48,6 +53,7 @@ def create_app(
 
     app.include_router(admin.router)
     app.include_router(images.router)
+    app.include_router(events.router)
 
     frontend_dir = settings.frontend_dir.resolve()
 

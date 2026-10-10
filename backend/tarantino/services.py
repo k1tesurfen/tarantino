@@ -1,5 +1,6 @@
 """Long-lived objects shared by the API routes, created in the app lifespan."""
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -11,32 +12,52 @@ from sqlalchemy.orm import sessionmaker
 
 from tarantino.config import Settings
 from tarantino.db import create_db_engine, make_session_factory, migrate
+from tarantino.events import EventBus
 from tarantino.jellyfin.client import JellyfinClient
 from tarantino.jellyfin.library import LibrarySync
+from tarantino.projector.adb import Adb
+from tarantino.settings import SettingsStore
+from tarantino.shows.orchestrator import ShowOrchestrator, Timing
 
 LIBRARY_SYNC_MINUTES = 15
 
 
 @dataclass
 class Services:
-    settings: Settings
+    settings_env: Settings
     engine: Engine
     session_factory: sessionmaker
+    settings: SettingsStore
     scheduler: AsyncIOScheduler
+    events: EventBus
+    adb_factory: Callable[[str], Adb] = Adb
     jellyfin: JellyfinClient | None = None
     library: LibrarySync | None = None
+    shows: ShowOrchestrator | None = None
 
     @classmethod
-    def create(cls, settings: Settings, jellyfin_transport: httpx.AsyncBaseTransport | None = None) -> "Services":
-        engine = create_db_engine(settings.data_dir)
+    def create(
+        cls,
+        env: Settings,
+        jellyfin_transport: httpx.AsyncBaseTransport | None = None,
+        adb_factory: Callable[[str], Adb] = Adb,
+        timing: Timing | None = None,
+    ) -> "Services":
+        engine = create_db_engine(env.data_dir)
         migrate(engine)
         session_factory = make_session_factory(engine)
-        services = cls(settings, engine, session_factory, AsyncIOScheduler())
-        if settings.jellyfin_api_key:
+        services = cls(
+            env, engine, session_factory, SettingsStore(session_factory), AsyncIOScheduler(), EventBus(), adb_factory
+        )
+        if env.jellyfin_api_key:
             services.jellyfin = JellyfinClient(
-                settings.jellyfin_url, settings.jellyfin_api_key.get_secret_value(), transport=jellyfin_transport
+                env.jellyfin_url, env.jellyfin_api_key.get_secret_value(), transport=jellyfin_transport
             )
-            services.library = LibrarySync(services.jellyfin, session_factory, settings.jellyfin_user)
+            services.library = LibrarySync(services.jellyfin, session_factory, env.jellyfin_user)
+            services.shows = ShowOrchestrator(
+                services.jellyfin, services.library, session_factory, services.settings,
+                services.events, adb_factory, timing,
+            )  # fmt: skip
         return services
 
     def start(self, run_jobs: bool = True) -> None:
@@ -50,6 +71,8 @@ class Services:
 
     async def close(self) -> None:
         self.scheduler.shutdown(wait=False)
+        if self.shows:
+            await self.shows.cancel_current()
         if self.jellyfin:
             await self.jellyfin.aclose()
         self.engine.dispose()
