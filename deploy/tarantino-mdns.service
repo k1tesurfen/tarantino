@@ -1,0 +1,15 @@
+[Unit]
+Description=Publish tarantino.local via mDNS (Avahi alias for this host)
+After=avahi-daemon.service network-online.target
+Requires=avahi-daemon.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=@APP_DIR@/deploy/mdns-alias.sh tarantino.local
+Restart=always
+RestartSec=10
+DynamicUser=true
+
+[Install]
+WantedBy=multi-user.target

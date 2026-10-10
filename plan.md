@@ -107,10 +107,11 @@ The specific addresses and names are kept out of the repo on purpose.
 - **Safety:** exported files contain addresses and RFID UIDs, so `*.tarantino.json` and `backups/` are gitignored.
 
 ### Tech & operations
-- **Backend:** Python 3.13 + FastAPI + SQLAlchemy 2 / SQLite (with Alembic migrations), `httpx` for HTTP, APScheduler for jobs, and `uv` for dependency management. I chose this stack because the integrations (Jellyfin, HA, ADB, USB) are easiest in Python.
+- **Backend:** Python 3.13 + FastAPI + SQLAlchemy 2 / SQLite (with Alembic migrations), `httpx` for HTTP, APScheduler for jobs, Typer for the CLI. Dependencies are pinned in `pyproject.toml` and installed into a plain venv (`uv` isn't available on either machine, so it was dropped). I chose this stack because the integrations (Jellyfin, HA, ADB, USB) are easiest in Python.
 - **Frontend:** a SvelteKit SPA (`adapter-static`) built into static files and served by FastAPI. Node is installed on the mini-PC for the build.
 - **Deployment:**
   - Native **systemd** service, running as a dedicated `tarantino` user, on **port 80** via `CAP_NET_BIND_SERVICE`.
+  - Checkout in `/opt/tarantino`, owned by the deploy user. Data in `/var/lib/tarantino`, secrets in `/etc/tarantino/tarantino.env`. A narrow sudo rule lets the deploy user restart the service, so updates need no password.
   - Reachable at **`http://tarantino.local`** through an Avahi alias. The mini-PC keeps its own hostname, and its IP is detected at runtime, not committed.
 - **Config:**
   - **Secrets live in `.env`**, which is gitignored: Jellyfin API key, admin password, HA token.
@@ -154,7 +155,7 @@ The specific addresses and names are kept out of the repo on purpose.
 ```
 CLAUDE.md                  (gitignored) public-repo rules + private environment values
 backend/
-  pyproject.toml, uv.lock, alembic/
+  pyproject.toml, alembic/
   tarantino/
     main.py            FastAPI app, static mount, lifespan (scheduler, sync)
     config.py          .env settings (pydantic-settings)
@@ -175,9 +176,12 @@ frontend/
   src/lib/themes/retro/…     full layout + components (default name "Red Apple Cinema")
   src/lib/api/…              typed API client, SSE store
 deploy/
-  install.sh  update.sh  tarantino.service  tarantino-mdns.service  env.example
+  install.sh  build.sh  update.sh  mdns-alias.sh  tarantino.service  tarantino-mdns.service  env.example
 scripts/
   check-public.sh            pre-commit guard (see §0)
+  check-commit-msg.sh        commit-msg guard: no AI attribution, no private words
+  setup-dev.sh               enables .githooks/ for a checkout
+.githooks/                   pre-commit, commit-msg
 ```
 
 ### Data model (SQLite)
@@ -241,7 +245,7 @@ Each milestone ends with a test on the mini-PC and a commit to `main`.
 
 | # | Milestone | Done when |
 |---|---|---|
-| **M0** | **Skeleton, guard rails & deploy pipeline**: the `check-public.sh` pre-commit hook, backend/frontend scaffolds, `env.example`, `install.sh` (apt deps: `adb`, `avahi-utils`, `nodejs`/`npm`; `tarantino` user; uv venv; frontend build; systemd units), `update.sh`, Avahi alias, `/api/health` | `http://tarantino.local` serves a placeholder page after a fresh install. The hook rejects a test commit containing a private IP |
+| **M0** | **Skeleton, guard rails & deploy pipeline**: the `check-public.sh` pre-commit hook, backend/frontend scaffolds, `env.example`, `install.sh` (apt deps: `adb`, `avahi-utils`, `nodejs`/`npm`; `tarantino` user; venv; frontend build; systemd units; sudo rule), `build.sh`, `update.sh`, Avahi alias, `/api/health` | `http://tarantino.local` serves a placeholder page after a fresh install. The hook rejects a test commit containing a private IP |
 | **M1** | **Jellyfin integration**: client, user resolution, library sync into SQLite, image proxy, admin status card | Admin shows Jellyfin 12.1.0, the movie/series counts match Jellyfin, and posters load through the proxy |
 | **M2** | **Projector control & playback**: ADB wrapper, session discovery and device pick in admin, orchestrator, SSE, an admin "test play" button | From admin, a sleeping projector wakes, opens Jellyfin and plays a chosen movie from 0:00. A series episode queue autoplays. A new show replaces a running one |
 | **M3** | **Programme engine**: rooms with filters and weights, presets, daily generation, cooldown, series stickiness, drop series, re-roll/swap, fake showtimes, unit tests on generation rules | 6 movie rooms and 4 series rooms are generated correctly. Tests cover cooldown, no duplicates, stickiness, finished/new-season handling and fallbacks |

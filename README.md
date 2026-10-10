@@ -106,9 +106,31 @@ Tarantino also runs an imaginary multiplex. Every day it generates a fresh progr
 
 ---
 
+## Installation (mini-PC, Debian 13)
+
+```sh
+sudo git clone https://github.com/<owner>/tarantino /opt/tarantino
+sudo chown -R "$USER": /opt/tarantino
+sudo /opt/tarantino/deploy/install.sh        # packages, service user, build, systemd, tarantino.local
+sudoedit /etc/tarantino/tarantino.env        # fill in secrets, then:
+sudo systemctl restart tarantino.service
+```
+
+Updates are run as the same user, without sudo: `/opt/tarantino/deploy/update.sh`.
+
+## Development
+
+```sh
+./scripts/setup-dev.sh                        # enable the public-repo git hooks
+python3 -m venv .venv && .venv/bin/pip install -e "backend[dev]"
+(cd backend && ../.venv/bin/pytest)
+(cd frontend && npm install && npm run dev)  # dev server proxies /api to :8000
+.venv/bin/uvicorn tarantino.main:app --reload --port 8000
+```
+
 ## Contributing / public repo rules
 
-This repository is public. **Never commit** tokens, passwords, API keys, IP addresses, hostnames, usernames, or exported configuration files. Secrets live in a local `.env` file (see `deploy/env.example` once it exists). Device-specific values such as IPs live in the admin settings, not in code. Use generic names in code and docs: *mini-PC*, *NAS*, *projector*, *VHS recorder*.
+This repository is public. **Never commit** tokens, passwords, API keys, IP addresses, hostnames, usernames, or exported configuration files. Secrets live in a local `.env` file (see `deploy/env.example`). Run `./scripts/setup-dev.sh` once per checkout to enable the git hooks that block private values and AI attribution lines. Device-specific values such as IPs live in the admin settings, not in code. Use generic names in code and docs: *mini-PC*, *NAS*, *projector*, *VHS recorder*.
 
 ---
 
