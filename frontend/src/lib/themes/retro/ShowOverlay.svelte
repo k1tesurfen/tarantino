@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { cinema } from '$lib/cinema/state.svelte';
+	import BulbFrame from './BulbFrame.svelte';
+	import LetterBoard from './LetterBoard.svelte';
 
 	const STEPS: Record<string, string> = {
 		resolve: 'Threading the reel',
@@ -21,28 +23,26 @@
 
 {#if show}
 	<div class="booth" role="status" aria-live="polite">
-		<div class="card sheet">
+		<div class="card">
+			<p class="headline neon" class:pink={!failed}>
+				{failed ? 'Missing reel' : done ? 'Now showing' : 'Coming right up'}
+			</p>
+			<BulbFrame step={22} chase={!failed}>
+				<LetterBoard lines={[show.item_name]} />
+			</BulbFrame>
+
 			{#if failed}
-				<p class="title missing">Missing reel</p>
-				<p class="film">{show.item_name}</p>
 				<p class="note">{show.error}</p>
 				<p class="note small">The projectionist apologizes. Try again in a minute.</p>
+			{:else if done}
+				<p class="note">Enjoy the picture. Positively no talking.</p>
 			{:else}
-				<p class="kicker">{done ? 'Now showing' : 'Projection booth'}</p>
-				<p class="title">{show.item_name}</p>
-				{#if done}
-					<p class="note">Enjoy the picture. Positively no talking.</p>
-				{:else}
-					<ul>
-						{#each Object.entries(STEPS) as [step, label]}
-							{@const status = show.steps.find((s) => s.step === step)?.status}
-							<li class={status ?? 'waiting'}>
-								<span class="box">{status === 'done' ? '✕' : status === 'running' ? '…' : ''}</span>
-								{label}
-							</li>
-						{/each}
-					</ul>
-				{/if}
+				<ul>
+					{#each Object.entries(STEPS) as [step, label]}
+						{@const status = show.steps.find((s) => s.step === step)?.status}
+						<li class={status ?? 'waiting'}><span class="lamp" aria-hidden="true"></span>{label}</li>
+					{/each}
+				</ul>
 			{/if}
 			{#if done || failed}
 				<button onclick={() => cinema.dismissShow()}>Back to the lobby</button>
@@ -59,89 +59,69 @@
 		display: grid;
 		place-items: center;
 		padding: 1rem;
-		background: rgb(15 9 7 / 0.92);
+		background: radial-gradient(ellipse at center, rgb(30 18 14 / 0.94), rgb(5 4 6 / 0.98));
 	}
 	.card {
-		width: min(28rem, 100%);
-		padding: 1.75rem 2rem;
+		width: min(36rem, 100%);
 		text-align: center;
-		transform: rotate(-1deg);
 	}
-	.kicker {
-		margin: 0;
-		font-family: var(--condensed);
-		text-transform: uppercase;
-		letter-spacing: 0.3em;
-		font-size: 0.8rem;
-		color: var(--red);
-	}
-	.title {
-		margin: 0.5rem 0 1.25rem;
-		font-family: var(--display);
-		text-transform: uppercase;
-		font-size: clamp(1.8rem, 6vw, 2.6rem);
-		line-height: 1;
-	}
-	.title.missing {
-		color: var(--red);
-		border: 4px solid var(--red);
-		display: inline-block;
-		padding: 0.2rem 0.8rem;
-		transform: rotate(-4deg);
-	}
-	.film {
-		font-family: var(--condensed);
-		text-transform: uppercase;
-		letter-spacing: 0.1em;
+	.headline {
+		margin: 0 0 1rem;
+		font-size: clamp(2.5rem, 7vw, 3.6rem);
+		line-height: 1.1;
 	}
 	ul {
 		list-style: none;
 		padding: 0;
-		margin: 0 auto;
+		margin: 1.75rem auto 0;
 		display: inline-flex;
 		flex-direction: column;
-		gap: 0.5rem;
+		gap: 0.55rem;
 		text-align: left;
+		color: var(--muted);
 	}
 	li {
 		display: flex;
 		align-items: center;
-		gap: 0.7rem;
-		color: var(--ink-soft);
+		gap: 0.8rem;
 	}
 	li.done,
 	li.running {
-		color: var(--ink);
-		font-weight: 700;
+		color: var(--cream);
 	}
-	.box {
-		width: 1.1rem;
-		height: 1.1rem;
-		display: grid;
-		place-items: center;
-		border: 2px solid currentColor;
-		font-size: 0.75rem;
-		line-height: 1;
+	.lamp {
+		width: 0.8rem;
+		height: 0.8rem;
+		border-radius: 50%;
+		background: #3a2c22;
 	}
-	li.done .box {
-		color: var(--red);
+	li.running .lamp {
+		background: var(--gold);
+		box-shadow: 0 0 0.6rem var(--gold);
+	}
+	li.done .lamp {
+		background: #fff6d0;
+		box-shadow: 0 0 0.8rem 0.2rem rgb(255 227 154 / 0.9);
 	}
 	.note {
-		margin: 0.5rem 0;
+		margin: 1.25rem 0 0;
+		color: var(--cream);
 	}
 	.note.small {
+		margin-top: 0.4rem;
 		font-size: 0.85rem;
-		color: var(--ink-soft);
+		color: var(--muted);
 	}
 	button {
-		margin-top: 1.25rem;
+		margin-top: 1.5rem;
 		font-family: var(--condensed);
 		text-transform: uppercase;
 		letter-spacing: 0.18em;
-		background: var(--ink);
-		color: var(--paper);
-		border: 0;
-		padding: 0.6rem 1.2rem;
+		background: none;
+		color: var(--gold-light);
+		border: 2px solid var(--gold);
+		border-radius: 999px;
+		padding: 0.55rem 1.3rem;
 		cursor: pointer;
 	}
 </style>

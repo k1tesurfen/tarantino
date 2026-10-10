@@ -4,6 +4,8 @@
 	import { cinema } from '$lib/cinema/state.svelte';
 	import { showtimeChips } from '$lib/cinema/tickets';
 	import TrailerModal from '../modern/TrailerModal.svelte';
+	import BulbFrame from './BulbFrame.svelte';
+	import LetterBoard from './LetterBoard.svelte';
 
 	let { title }: { title: TitleDetail } = $props();
 
@@ -30,17 +32,17 @@
 
 <a class="back" href="/">◂ Back to tonight's bill</a>
 
-<article class="sheet">
+<article>
 	<div class="poster-col">
-		<div class="poster">
-			{#if title.poster_tag}
-				<img src={imageUrl(title.id, 'Primary', title.poster_tag, 700)} alt={title.name} />
-			{/if}
-			<span class="tape left" aria-hidden="true"></span>
-			<span class="tape right" aria-hidden="true"></span>
-		</div>
+		<BulbFrame step={20} chase={false}>
+			<div class="poster">
+				{#if title.poster_tag}
+					<img src={imageUrl(title.id, 'Primary', title.poster_tag, 700)} alt={title.name} />
+				{/if}
+			</div>
+		</BulbFrame>
 		{#if title.trailers.length}
-			<button class="coming" onclick={() => (trailerOpen = true)}>▶ Coming attractions</button>
+			<button class="coming" onclick={() => (trailerOpen = true)}><span class="neon pink">Coming attractions</span></button>
 		{/if}
 	</div>
 
@@ -52,15 +54,12 @@
 				Not on tonight's bill
 			{/if}
 		</p>
-		<h1>{title.name}</h1>
-		{#if title.tagline}<p class="tagline">“{title.tagline}”</p>{/if}
+		<LetterBoard lines={[title.name]} />
+		{#if title.tagline}<p class="tagline neon">“{title.tagline}”</p>{/if}
 
 		<div class="facts">
 			{#if title.official_rating}
-				<div class="certificate">
-					<strong>{title.official_rating}</strong>
-					<span>Certificate</span>
-				</div>
+				<div class="certificate"><strong>{title.official_rating}</strong><span>Certificate</span></div>
 			{/if}
 			<dl>
 				{#if title.year}<div><dt>Year</dt><dd>{title.year}</dd></div>{/if}
@@ -79,14 +78,13 @@
 		{#if screening}
 			<div class="box-office">
 				<p class="shows">
-					Shows tonight:
-					{#each showtimeChips(cinema.programme?.date ?? '', screening.showtimes) as chip, i}
-						{#if i}<span class="sep">·</span>{/if}<span class={chip.state}>{chip.label}</span>
+					{#each showtimeChips(cinema.programme?.date ?? '', screening.showtimes) as chip}
+						<span class="tile {chip.state}">{chip.label}</span>
 					{/each}
 					{#if screening.sold_out}<span class="sold">Sold out</span>{/if}
 				</p>
 				<div class="actions">
-					<a class="admit" href="/tickets/{screening.room}">Admit one ▸</a>
+					<a class="admit" href="/tickets/{screening.room}">Admit one</a>
 					<button class="sneak" onclick={playNow}>{isSeries ? 'Roll the next chapter' : 'Sneak in · play now'}</button>
 				</div>
 				{#if error}<p class="error">{error}</p>{/if}
@@ -111,7 +109,7 @@
 	.back {
 		display: inline-block;
 		margin-bottom: 1rem;
-		color: var(--paper);
+		color: var(--gold-light);
 		font-family: var(--condensed);
 		text-transform: uppercase;
 		letter-spacing: 0.15em;
@@ -121,83 +119,61 @@
 	article {
 		display: grid;
 		grid-template-columns: minmax(14rem, 24rem) 1fr;
-		gap: clamp(1.5rem, 4vw, 3rem);
+		gap: clamp(1.5rem, 4vw, 3.5rem);
 		padding: clamp(1.25rem, 3vw, 2.5rem);
+		border-radius: 0.75rem;
+		background:
+			linear-gradient(rgb(255 200 120 / 0.06), transparent 40%),
+			repeating-linear-gradient(90deg, #22150d 0 3px, #1c110b 3px 90px);
+		border: 1px solid rgb(231 183 90 / 0.25);
 	}
 	.poster-col {
 		display: flex;
 		flex-direction: column;
-		gap: 1.25rem;
+		gap: 1.5rem;
 	}
 	.poster {
 		position: relative;
-		transform: rotate(-1.5deg);
-		border: 8px solid #fff8e8;
-		box-shadow: 0 0.5rem 1.5rem rgb(0 0 0 / 0.35);
+		aspect-ratio: 2 / 3;
+		background: #000;
 	}
 	.poster img {
 		display: block;
 		width: 100%;
-		aspect-ratio: 2 / 3; /* reserve the space while the poster loads */
+		height: 100%;
 		object-fit: cover;
-		filter: sepia(0.3) saturate(0.9) contrast(1.1);
+		filter: brightness(1.08) saturate(1.1);
 	}
 	.poster::after {
 		content: '';
 		position: absolute;
 		inset: 0;
-		background: radial-gradient(rgb(30 23 18 / 0.3) 0.9px, transparent 1.4px) 0 0 / 4px 4px;
-		mix-blend-mode: multiply;
-	}
-	.tape {
-		position: absolute;
-		top: -0.9rem;
-		width: 5.5rem;
-		height: 1.6rem;
-		background: rgb(219 200 150 / 0.75);
-		z-index: 1;
-	}
-	.tape.left {
-		left: -1.2rem;
-		transform: rotate(-35deg);
-	}
-	.tape.right {
-		right: -1.2rem;
-		transform: rotate(35deg);
+		background: linear-gradient(115deg, rgb(255 255 255 / 0.18), transparent 30% 65%, rgb(255 255 255 / 0.06));
 	}
 	.coming {
-		font-family: var(--display);
-		text-transform: uppercase;
-		font-size: 1.05rem;
-		background: var(--ink);
-		color: var(--mustard);
-		border: 0;
-		padding: 0.8rem 1rem;
+		background: none;
+		border: 2px solid var(--neon-pink);
+		border-radius: 0.5rem;
+		padding: 0.4rem 1rem 0.6rem;
 		cursor: pointer;
+		box-shadow:
+			0 0 0.8rem rgb(255 111 174 / 0.5),
+			inset 0 0 0.8rem rgb(255 111 174 / 0.3);
 	}
-	.coming:hover {
-		color: var(--paper);
-		background: var(--red);
+	.coming .neon {
+		font-size: 1.9rem;
 	}
 	.kicker {
-		margin: 0;
+		margin: 0 0 0.75rem;
 		font-family: var(--condensed);
 		text-transform: uppercase;
 		letter-spacing: 0.2em;
-		color: var(--red);
-	}
-	h1 {
-		margin: 0.4rem 0;
-		font-family: var(--display);
-		text-transform: uppercase;
-		font-size: clamp(2.2rem, 5.5vw, 4rem);
-		line-height: 1;
+		color: var(--gold);
 	}
 	.tagline {
-		margin: 0.5rem 0 1.25rem;
-		font-size: 1.15rem;
-		font-style: italic;
-		color: var(--red);
+		margin: 1.25rem 0;
+		font-size: clamp(1.5rem, 3vw, 2.1rem);
+		line-height: 1.2;
 	}
 	.facts {
 		display: flex;
@@ -209,12 +185,15 @@
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		border: 3px solid var(--ink);
+		border: 3px solid var(--gold);
+		color: var(--gold-light);
 		padding: 0.4rem 0.8rem;
 		min-width: 4rem;
+		box-shadow: 0 0 0.8rem rgb(231 183 90 / 0.35);
 	}
 	.certificate strong {
 		font-family: var(--display);
+		font-weight: 400;
 		font-size: 1.8rem;
 		line-height: 1;
 	}
@@ -235,40 +214,54 @@
 		text-transform: uppercase;
 		letter-spacing: 0.15em;
 		font-size: 0.7rem;
-		color: var(--ink-soft);
+		color: var(--gold);
 	}
 	dd {
 		margin: 0;
 		font-weight: 700;
+		color: var(--cream);
 	}
 	.overview {
 		line-height: 1.65;
 		margin: 1.5rem 0;
 	}
 	.box-office {
-		border: 3px double var(--ink);
+		border: 1px solid rgb(231 183 90 / 0.4);
+		border-radius: 0.5rem;
 		padding: 1rem 1.25rem;
-		margin-bottom: 1.5rem;
+		margin-bottom: 1.75rem;
+		background: rgb(0 0 0 / 0.25);
 	}
 	.shows {
-		margin: 0 0 0.9rem;
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.3rem;
+		margin: 0 0 1rem;
 	}
-	.sep {
-		margin: 0 0.35rem;
-	}
-	.shows .past {
-		opacity: 0.55;
-	}
-	.shows .next {
+	.tile {
+		font-family: var(--condensed);
 		font-weight: 700;
-		background: var(--mustard);
-		padding: 0 0.3rem;
+		letter-spacing: 0.08em;
+		font-size: 0.9rem;
+		padding: 0.15rem 0.5rem;
+		background: var(--cream);
+		color: #121010;
+	}
+	.tile.past {
+		opacity: 0.4;
+	}
+	.tile.next {
+		background: var(--gold-light);
+		box-shadow: 0 0 0.8rem rgb(255 227 154 / 0.8);
 	}
 	.sold {
-		margin-left: 0.5rem;
-		color: var(--red);
-		font-weight: 700;
+		margin-left: 0.6rem;
+		color: var(--neon);
+		font-family: var(--condensed);
 		text-transform: uppercase;
+		letter-spacing: 0.15em;
+		text-shadow: 0 0 0.6rem rgb(255 58 76 / 0.8);
 	}
 	.actions {
 		display: flex;
@@ -281,50 +274,53 @@
 		text-transform: uppercase;
 		letter-spacing: 0.18em;
 		font-size: 0.95rem;
-		padding: 0.6rem 1.1rem;
+		padding: 0.6rem 1.2rem;
+		border-radius: 999px;
 		text-decoration: none;
 		cursor: pointer;
 	}
 	.admit {
-		background: var(--red);
-		color: var(--paper);
+		color: #1b1006;
+		background: linear-gradient(#ffe7a3, var(--gold));
+		box-shadow: 0 0 1rem rgb(231 183 90 / 0.5);
 	}
 	.sneak {
 		background: none;
-		border: 2px solid var(--ink);
-		color: var(--ink);
+		border: 2px solid var(--gold);
+		color: var(--gold-light);
 	}
 	.error {
-		color: var(--red);
+		color: var(--neon);
 	}
 	.billing {
-		border-top: 2px solid var(--ink);
+		border-top: 1px solid rgb(231 183 90 / 0.4);
 		padding-top: 1rem;
 		text-align: center;
 		font-family: var(--condensed);
 		text-transform: uppercase;
 		letter-spacing: 0.08em;
+		color: var(--cream);
 	}
 	.billing p {
-		margin: 0.35rem 0;
+		margin: 0.4rem 0;
 		font-size: 1.05rem;
 	}
 	.billing small {
 		display: block;
 		font-size: 0.65rem;
 		letter-spacing: 0.3em;
-		color: var(--ink-soft);
+		color: var(--gold);
 	}
 	.billing .studios {
 		font-size: 0.75rem;
-		color: var(--ink-soft);
+		color: var(--muted);
 	}
 	@media (max-width: 760px) {
 		article {
 			grid-template-columns: 1fr;
 		}
 		.poster-col {
-			max-width: 16rem;
+			max-width: 17rem;
 		}
 	}
 </style>

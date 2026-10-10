@@ -3,72 +3,74 @@
 	import type { CinemaRoom } from '$lib/cinema/api';
 	import { cinema } from '$lib/cinema/state.svelte';
 	import { showtimeChips } from '$lib/cinema/tickets';
+	import Apple from './Apple.svelte';
+	import BulbFrame from './BulbFrame.svelte';
+	import { doubleBills } from './bills';
 
 	const BILL_LINES = [
 		'Two features. One ticket. No refunds.',
 		'Stay for the second picture. That is where it gets good.',
 		'Positively no talking during the picture.',
-		'Mind the cigarette burns. They are part of the show.',
 		'Bring a date. Or a briefcase. Do not open the briefcase.',
 		'Sit anywhere. Except the projectionist’s seat.'
 	];
 
 	const programme = $derived(cinema.programme);
-	const movieRooms = $derived(programme?.rooms.filter((r) => r.kind === 'movie') ?? []);
+	const bills = $derived(programme ? doubleBills(programme.rooms) : []);
 	const serials = $derived(programme?.rooms.filter((r) => r.kind === 'series') ?? []);
-	// Auditoriums 1+2, 3+4, ... become double bills.
-	const bills = $derived(
-		Array.from({ length: Math.ceil(movieRooms.length / 2) }, (_, i) => movieRooms.slice(i * 2, i * 2 + 2))
-	);
 
-	const minutes = (room: CinemaRoom) => (room.item?.runtime_minutes ? `${room.item.runtime_minutes} min` : '');
+	const facts = (room: CinemaRoom) =>
+		[room.item?.year, room.item?.runtime_minutes ? `${room.item.runtime_minutes} min` : null, room.item?.official_rating]
+			.filter(Boolean)
+			.join(' · ');
 </script>
 
 {#snippet feature(room: CinemaRoom)}
 	<div class="feature">
-		{#if room.item}
-			<a class="poster" href="/film/{room.item.id}">
-				<img src={imageUrl(room.item.id, 'Primary', room.item.poster_tag, 500)} alt={room.item.name} loading="lazy" />
-				{#if room.sold_out}<span class="stamp">Sold out</span>{/if}
-			</a>
-			<div class="text">
+		<div class="case">
+			<BulbFrame step={18} chase={false}>
+				{#if room.item}
+					<a class="poster" href="/film/{room.item.id}">
+						<img src={imageUrl(room.item.id, 'Primary', room.item.poster_tag, 500)} alt={room.item.name} loading="lazy" />
+						{#if room.sold_out}<span class="sold">Sold out</span>{/if}
+					</a>
+				{:else}
+					<div class="poster missing">
+						<span class="neon">Missing reel</span>
+						<small>The projectionist is looking into it.</small>
+					</div>
+				{/if}
+			</BulbFrame>
+		</div>
+		<div class="info">
 			<p class="room">Auditorium {room.number} · {room.name}</p>
-			<h3><a href="/film/{room.item.id}">{room.item.name}</a></h3>
-			<p class="facts">{[room.item.year, minutes(room), room.item.official_rating].filter(Boolean).join(' · ')}</p>
-			<p class="shows">
-				Shows
-				{#each showtimeChips(programme!.date, room.showtimes) as chip, i}
-					{#if i}<span class="sep">·</span>{/if}<span class={chip.state}>{chip.label}</span>
-				{/each}
-			</p>
-			<a class="admit" href="/tickets/{room.number}">Admit one ▸</a>
-			</div>
-		{:else}
-			<div class="poster missing">
-				<span>Missing reel</span>
-				<small>The projectionist is looking into it.</small>
-			</div>
-			<div class="text">
-				<p class="room">Auditorium {room.number} · {room.name}</p>
+			{#if room.item}
+				<h3><a href="/film/{room.item.id}">{room.item.name}</a></h3>
+				<p class="facts">{facts(room)}</p>
+				<p class="shows">
+					{#each showtimeChips(programme!.date, room.showtimes) as chip}
+						<span class="tile {chip.state}">{chip.label}</span>
+					{/each}
+				</p>
+				<a class="admit" href="/tickets/{room.number}">Admit one</a>
+			{:else}
 				<h3>Dark tonight</h3>
-			</div>
-		{/if}
+			{/if}
+		</div>
 	</div>
 {/snippet}
 
 {#if !programme}
-	<p class="loading">Threading the reels…</p>
+	<p class="loading">Warming up the bulbs…</p>
 {:else}
 	<section id="bills">
 		{#each bills as bill, i}
-			<article class="bill sheet" class:single={bill.length === 1}>
-				<header>
-					<span class="ribbon">{bill.length === 2 ? 'Double feature' : 'Special engagement'}</span>
-				</header>
+			<article class="bill" class:single={bill.length === 1}>
+				<p class="bill-title neon pink">{bill.length === 2 ? 'Double Feature' : 'Special Engagement'}</p>
 				<div class="features">
 					{@render feature(bill[0])}
 					{#if bill[1]}
-						<span class="plus" aria-hidden="true">Plus!</span>
+						<span class="and neon" aria-hidden="true">&amp;</span>
 						{@render feature(bill[1])}
 					{/if}
 				</div>
@@ -79,10 +81,11 @@
 
 	{#if serials.length}
 		<section id="serials">
-			<h2>Serials · a new chapter every night</h2>
+			<h2 class="neon">Serials</h2>
+			<p class="sub">A new chapter every night in the lounge</p>
 			<div class="serials">
 				{#each serials as room (room.number)}
-					<article class="serial sheet">
+					<article class="serial">
 						{#if room.item}
 							<a class="lobby" href="/film/{room.item.id}">
 								<img
@@ -90,21 +93,17 @@
 									alt=""
 									loading="lazy"
 								/>
-								{#if room.sticky}<span class="stamp small">Now serialized</span>{/if}
+								{#if room.sticky}<span class="running">Now serialized</span>{/if}
 							</a>
-							<div class="serial-body">
-								<p class="room">{room.number} · {room.name}</p>
-								<h3><a href="/film/{room.item.id}">{room.item.name}</a></h3>
-								<p class="facts">
-									{room.item.unplayed_count != null ? `${room.item.unplayed_count} chapters to go` : 'A serial'}
-								</p>
-								<a class="admit" href="/tickets/{room.number}">Next chapter ▸</a>
-							</div>
+							<p class="room">{room.number} · {room.name}</p>
+							<h3><a href="/film/{room.item.id}">{room.item.name}</a></h3>
+							<p class="facts">
+								{room.item.unplayed_count != null ? `${room.item.unplayed_count} chapters to go` : 'A serial'}
+							</p>
+							<a class="admit small" href="/tickets/{room.number}">Next chapter</a>
 						{:else}
-							<div class="serial-body">
-								<p class="room">{room.number} · {room.name}</p>
-								<h3>Dark tonight</h3>
-							</div>
+							<div class="lobby dark"><span class="neon">Dark tonight</span></div>
+							<p class="room">{room.number} · {room.name}</p>
 						{/if}
 					</article>
 				{/each}
@@ -112,89 +111,70 @@
 		</section>
 	{/if}
 
-	<section id="concessions" class="concessions sheet">
-		<h2>Concession stand</h2>
-		<ul>
-			<li><span>Royale with Cheese</span><i></i><span>$2.50</span></li>
-			<li><span>Big Kahuna Burger</span><i></i><span>$3.00</span></li>
-			<li><span>Five-dollar shake</span><i></i><span>$5.00</span></li>
-			<li><span>Buttered popcorn, large</span><i></i><span>$1.25</span></li>
-			<li><span>Red Apple tobacco</span><i></i><span>props only</span></li>
-		</ul>
-		<p>Twist contest at Jack Rabbit Slim’s · Fridays after the late show</p>
+	<section id="concessions">
+		<h2 class="neon">Concessions</h2>
+		<div class="menu">
+			<Apple size={44} />
+			<ul>
+				<li><span>Royale with Cheese</span><i></i><span>$2.50</span></li>
+				<li><span>Big Kahuna Burger</span><i></i><span>$3.00</span></li>
+				<li><span>Five-dollar shake</span><i></i><span>$5.00</span></li>
+				<li><span>Buttered popcorn, large</span><i></i><span>$1.25</span></li>
+				<li><span>Red Apple tobacco</span><i></i><span>props only</span></li>
+			</ul>
+			<p>Twist contest at Jack Rabbit Slim’s · Fridays after the late show</p>
+		</div>
 	</section>
 {/if}
 
 <style>
 	.loading {
-		color: var(--paper);
 		text-align: center;
 		padding: 4rem;
+		color: var(--muted);
 	}
 	section {
 		scroll-margin-top: 1rem;
 	}
 	#bills {
 		display: grid;
-		gap: 2.5rem;
+		gap: 3.5rem;
 	}
 	.bill {
-		padding: 1.25rem clamp(1rem, 3vw, 2.5rem) 1.5rem;
-		transform: rotate(-0.4deg);
+		padding: 1.5rem clamp(1rem, 3vw, 2.5rem) 1.75rem;
+		border-radius: 0.75rem;
+		/* the theatre front: dark wood panelling under the warm glow */
+		background:
+			linear-gradient(rgb(255 200 120 / 0.06), transparent 40%),
+			repeating-linear-gradient(90deg, #22150d 0 3px, #1c110b 3px 90px);
+		border: 1px solid rgb(231 183 90 / 0.25);
+		box-shadow: 0 1.5rem 3rem rgb(0 0 0 / 0.6);
 	}
-	.bill:nth-child(even) {
-		transform: rotate(0.5deg);
-	}
-	.bill header {
+	.bill-title {
 		text-align: center;
-		margin-bottom: 1.25rem;
-	}
-	.ribbon {
-		display: inline-block;
-		font-family: var(--display);
-		text-transform: uppercase;
-		font-size: clamp(1.4rem, 3.5vw, 2.4rem);
-		color: var(--paper);
-		background: var(--red);
-		padding: 0.25rem 1.5rem;
-		box-shadow: 0.25rem 0.25rem 0 var(--ink);
+		margin: 0 0 1.5rem;
+		font-size: clamp(2.2rem, 5vw, 3.4rem);
+		line-height: 1;
 	}
 	.features {
 		display: grid;
 		grid-template-columns: 1fr auto 1fr;
 		gap: 1.5rem;
-		align-items: start;
+		align-items: center;
 	}
 	.single .features {
-		grid-template-columns: minmax(0, 28rem);
+		grid-template-columns: minmax(0, 36rem);
 		justify-content: center;
 	}
-	.plus {
-		align-self: center;
-		width: 4.5rem;
-		height: 4.5rem;
-		display: grid;
-		place-items: center;
-		border-radius: 50%;
-		background: var(--mustard);
-		color: var(--ink);
-		font-family: var(--display);
-		text-transform: uppercase;
-		font-size: 0.95rem;
-		transform: rotate(-12deg);
-		box-shadow: 0.2rem 0.2rem 0 var(--ink);
+	.and {
+		font-size: 4.5rem;
+		line-height: 1;
 	}
 	.feature {
 		display: grid;
-		grid-template-columns: minmax(8rem, 13rem) 1fr;
-		gap: 1.1rem;
-		align-items: start;
-		min-width: 0;
-	}
-	.text {
-		display: flex;
-		flex-direction: column;
-		gap: 0.35rem;
+		grid-template-columns: minmax(9rem, 14rem) 1fr;
+		gap: 1.25rem;
+		align-items: center;
 		min-width: 0;
 	}
 	.poster {
@@ -202,24 +182,20 @@
 		display: block;
 		aspect-ratio: 2 / 3;
 		overflow: hidden;
-		border: 6px solid var(--ink);
-		background: var(--ink);
+		background: #000;
 	}
-	/* Screen-printed look: warm, slightly crushed colours plus a halftone dot screen. */
-	.poster img,
-	.lobby img {
+	/* Backlit one-sheet behind glass: bright, warm, with a sheen across the glass. */
+	.poster img {
 		width: 100%;
 		height: 100%;
 		object-fit: cover;
-		filter: sepia(0.35) saturate(0.9) contrast(1.12);
+		filter: brightness(1.08) saturate(1.1) contrast(1.05);
 	}
-	.poster::after,
-	.lobby::after {
+	.poster::after {
 		content: '';
 		position: absolute;
 		inset: 0;
-		background: radial-gradient(rgb(30 23 18 / 0.35) 0.9px, transparent 1.4px) 0 0 / 4px 4px;
-		mix-blend-mode: multiply;
+		background: linear-gradient(115deg, rgb(255 255 255 / 0.18), transparent 30% 65%, rgb(255 255 255 / 0.06));
 		pointer-events: none;
 	}
 	.poster.missing {
@@ -228,83 +204,90 @@
 		align-items: center;
 		justify-content: center;
 		gap: 0.75rem;
+		padding: 1rem;
 		text-align: center;
-		color: var(--paper);
-		background: repeating-linear-gradient(45deg, #2b211a 0 14px, #231a14 14px 28px);
+		background: radial-gradient(#1d1418, #0a080b);
 	}
-	.missing span {
-		font-family: var(--display);
-		text-transform: uppercase;
-		font-size: 1.15rem;
-		border: 3px solid var(--paper);
-		padding: 0.3rem 0.9rem;
-		transform: rotate(-6deg);
+	.missing .neon {
+		font-size: 2.2rem;
+		line-height: 1;
 	}
 	.missing small {
-		font-size: 0.8rem;
-		max-width: 14rem;
+		color: var(--muted);
+		font-size: 0.75rem;
 	}
-	.stamp {
+	.sold {
 		position: absolute;
-		top: 40%;
-		left: 50%;
-		transform: translate(-50%, -50%) rotate(-14deg);
+		top: 1.6rem;
+		right: -3rem;
 		z-index: 1;
-		font-family: var(--display);
+		width: 12rem;
+		text-align: center;
+		transform: rotate(35deg);
+		background: var(--red);
+		color: var(--cream);
+		font-family: var(--condensed);
+		font-weight: 700;
 		text-transform: uppercase;
-		font-size: 1.3rem;
-		color: var(--red);
-		border: 4px solid var(--red);
-		padding: 0.2rem 0.8rem;
-		background: rgb(239 226 196 / 0.85);
-		white-space: nowrap;
+		letter-spacing: 0.15em;
+		padding: 0.3rem 0;
+		box-shadow: 0 0 1rem rgb(255 58 76 / 0.6);
 	}
-	.stamp.small {
-		font-size: 1rem;
-		top: 1rem;
-		left: auto;
-		right: 0.75rem;
-		transform: rotate(6deg);
-		border-width: 3px;
+	.info {
+		display: flex;
+		flex-direction: column;
+		gap: 0.4rem;
+		min-width: 0;
 	}
 	.room {
 		margin: 0;
 		font-family: var(--condensed);
 		text-transform: uppercase;
-		letter-spacing: 0.18em;
+		letter-spacing: 0.2em;
 		font-size: 0.75rem;
-		color: var(--red);
+		color: var(--gold);
 	}
 	h3 {
 		margin: 0;
 		font-family: var(--display);
+		font-weight: 400;
 		text-transform: uppercase;
-		font-size: clamp(1.3rem, 2.4vw, 1.9rem);
+		font-size: clamp(1.3rem, 2.2vw, 1.9rem);
 		line-height: 1.05;
+		color: var(--cream);
+		text-shadow: 0 0 1.2rem rgb(255 210 140 / 0.35);
 	}
 	h3 a {
 		text-decoration: none;
 	}
 	.facts {
 		margin: 0;
-		color: var(--ink-soft);
+		color: var(--muted);
 		font-size: 0.9rem;
 	}
 	.shows {
-		margin: 0.2rem 0;
-		font-size: 0.9rem;
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.3rem;
+		margin: 0.3rem 0;
 	}
-	.sep {
-		margin: 0 0.35rem;
-	}
-	.shows .past {
-		color: var(--ink-soft);
-		opacity: 0.6;
-	}
-	.shows .next {
+	/* Showtimes as little letter-board tiles. */
+	.tile {
+		font-family: var(--condensed);
 		font-weight: 700;
-		background: var(--mustard);
-		padding: 0 0.3rem;
+		letter-spacing: 0.08em;
+		font-size: 0.85rem;
+		padding: 0.15rem 0.45rem;
+		background: var(--cream);
+		color: #121010;
+		box-shadow: inset 0 0 0.4rem rgb(255 230 170 / 0.9);
+	}
+	.tile.past {
+		opacity: 0.4;
+	}
+	.tile.next {
+		background: var(--gold-light);
+		box-shadow: 0 0 0.8rem rgb(255 227 154 / 0.8);
 	}
 	.admit {
 		align-self: flex-start;
@@ -312,102 +295,139 @@
 		font-family: var(--condensed);
 		text-transform: uppercase;
 		letter-spacing: 0.2em;
-		font-size: 0.9rem;
+		font-size: 0.95rem;
 		text-decoration: none;
-		color: var(--paper);
-		background: var(--ink);
-		padding: 0.45rem 0.9rem;
+		color: #1b1006;
+		background: linear-gradient(#ffe7a3, var(--gold));
+		padding: 0.5rem 1.1rem;
+		border-radius: 999px;
+		box-shadow: 0 0 1rem rgb(231 183 90 / 0.5);
 	}
 	.admit:hover {
-		background: var(--red);
+		box-shadow: 0 0 1.6rem rgb(255 227 154 / 0.9);
+	}
+	.admit.small {
+		font-size: 0.8rem;
+		padding: 0.35rem 0.9rem;
 	}
 	.line {
-		margin: 1.5rem 0 0;
+		margin: 1.75rem 0 0;
 		text-align: center;
 		font-style: italic;
-		color: var(--ink-soft);
-		border-top: 2px dashed var(--ink-soft);
-		padding-top: 0.9rem;
+		color: var(--muted);
 	}
 	h2 {
-		font-family: var(--display);
-		text-transform: uppercase;
-		color: var(--paper);
 		text-align: center;
-		font-size: clamp(1.5rem, 3vw, 2.2rem);
-		margin: 3.5rem 0 1.5rem;
-		text-shadow: 0.15rem 0.15rem 0 var(--red);
+		margin: 4rem 0 0;
+		font-size: clamp(2.8rem, 6vw, 4rem);
+		line-height: 1.1;
+	}
+	.sub {
+		text-align: center;
+		color: var(--muted);
+		margin: 0.3rem 0 1.75rem;
 	}
 	.serials {
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(min(19rem, 100%), 1fr));
-		gap: 1.5rem;
+		gap: 1.75rem;
 	}
 	.serial {
-		padding: 0.75rem;
 		display: flex;
 		flex-direction: column;
-		gap: 0.6rem;
+		gap: 0.4rem;
 	}
 	.lobby {
 		position: relative;
 		display: block;
 		aspect-ratio: 16 / 9;
 		overflow: hidden;
-		border: 4px solid var(--ink);
+		border: 6px solid transparent;
+		border-image: linear-gradient(135deg, #f5d27a, #9c6f24, #f5d27a, #7a5418) 1;
+		box-shadow: 0 0 1.5rem rgb(255 200 120 / 0.25);
+		margin-bottom: 0.4rem;
 	}
-	.serial-body {
-		display: flex;
-		flex-direction: column;
-		gap: 0.3rem;
-		padding: 0 0.25rem 0.25rem;
+	.lobby img {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
 	}
-	.concessions {
-		margin-top: 3.5rem;
+	.lobby.dark {
+		display: grid;
+		place-items: center;
+		background: #0a080b;
+	}
+	.lobby.dark .neon {
+		font-size: 2rem;
+	}
+	.running {
+		position: absolute;
+		top: 0.6rem;
+		right: 0.6rem;
+		font-family: var(--condensed);
+		text-transform: uppercase;
+		letter-spacing: 0.15em;
+		font-size: 0.75rem;
+		background: var(--gold-light);
+		color: #121010;
+		padding: 0.2rem 0.5rem;
+		box-shadow: 0 0 0.8rem rgb(255 227 154 / 0.8);
+	}
+	/* A backlit menu board. */
+	.menu {
+		position: relative;
 		max-width: 34rem;
-		margin-inline: auto;
-		padding: 1rem 2rem 1.5rem;
-		transform: rotate(0.6deg);
+		margin: 1.5rem auto 0;
+		padding: 1.5rem 2rem;
+		color: #121010;
+		background: radial-gradient(ellipse at center, #fffdf5, #f1e4c2 80%);
+		border: 4px solid #3a2a14;
+		box-shadow:
+			inset 0 0 1.5rem rgb(255 230 170 / 0.9),
+			0 0 2.5rem rgb(255 240 200 / 0.3);
+		font-family: var(--condensed);
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+		font-weight: 600;
 	}
-	.concessions h2 {
-		color: var(--ink);
-		text-shadow: none;
-		margin: 0.5rem 0 1rem;
+	.menu :global(svg) {
+		position: absolute;
+		top: -1.4rem;
+		right: -1.2rem;
+		transform: rotate(12deg);
 	}
-	.concessions ul {
+	.menu ul {
 		list-style: none;
 		padding: 0;
 		margin: 0;
 	}
-	.concessions li {
+	.menu li {
 		display: flex;
 		gap: 0.5rem;
-		padding: 0.25rem 0;
+		padding: 0.3rem 0;
 	}
-	.concessions i {
+	.menu i {
 		flex: 1;
-		border-bottom: 2px dotted var(--ink-soft);
-		margin-bottom: 0.3rem;
+		border-bottom: 2px dotted #6a5a3a;
+		margin-bottom: 0.35rem;
 	}
-	.concessions p {
+	.menu p {
+		margin: 1rem 0 0;
 		text-align: center;
-		margin: 1.25rem 0 0;
-		font-size: 0.85rem;
+		font-size: 0.8rem;
 		color: var(--red);
 	}
-	@media (max-width: 1000px) {
+	@media (max-width: 1100px) {
 		.features {
 			grid-template-columns: 1fr;
+		}
+		.and {
+			justify-self: center;
 		}
 	}
 	@media (max-width: 480px) {
 		.feature {
-			grid-template-columns: 7rem 1fr;
-		}
-	}
-	@media (max-width: 1000px) {
-		.plus {
-			justify-self: center;
+			grid-template-columns: 8rem 1fr;
 		}
 	}
 </style>

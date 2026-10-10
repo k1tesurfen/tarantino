@@ -50,18 +50,19 @@
 {#if !programme}
 	<p class="loading">Opening the box office…</p>
 {:else if !room || !item}
-	<div class="sheet closed">
+	<div class="booth closed">
 		<h1>Dark tonight</h1>
 		<p>Auditorium {roomNumber} has nothing on the bill. Missing reel, probably.</p>
 		<a href="/">◂ Back to tonight's bill</a>
 	</div>
 {:else}
 	<a class="back" href="/">◂ Back to tonight's bill</a>
-	<div class="box-office sheet">
+	<div class="booth">
+		<p class="booth-sign">Box Office</p>
 		<header>
 			<img src={imageUrl(item.id, 'Primary', item.poster_tag, 300)} alt="" />
 			<div>
-				<p class="kicker">Box office · {room.kind === 'movie' ? 'Auditorium' : 'Lounge'} {room.number}</p>
+				<p class="kicker">{room.kind === 'movie' ? 'Auditorium' : 'Lounge'} {room.number} · {room.name}</p>
 				<h1>{item.name}</h1>
 				<p>{formatCinemaDate(programme.date)} · {time}</p>
 			</div>
@@ -118,41 +119,64 @@
 
 <style>
 	.loading {
-		color: var(--paper);
+		color: var(--muted);
 		text-align: center;
 		padding: 4rem;
 	}
 	.back {
 		display: inline-block;
 		margin-bottom: 1rem;
-		color: var(--paper);
+		color: var(--gold-light);
 		font-family: var(--condensed);
 		text-transform: uppercase;
 		letter-spacing: 0.15em;
 		text-decoration: none;
 		font-size: 0.85rem;
 	}
-	.closed,
-	.box-office {
-		max-width: 56rem;
+	/* The box office: a glass booth set in dark wood, lit from inside. */
+	.booth {
+		max-width: 58rem;
 		margin: 0 auto;
 		padding: clamp(1rem, 3vw, 2rem);
+		border-radius: 1.5rem 1.5rem 0.5rem 0.5rem;
+		border: 10px solid #3a2414;
+		background:
+			linear-gradient(115deg, rgb(255 255 255 / 0.07), transparent 25% 70%, rgb(255 255 255 / 0.04)),
+			radial-gradient(ellipse at top, rgb(255 200 120 / 0.14), transparent 60%),
+			#120d10;
+		box-shadow:
+			0 0 0 2px #8a6324,
+			0 0 3rem rgb(255 190 80 / 0.15),
+			0 1.5rem 3rem rgb(0 0 0 / 0.7);
 	}
-	.closed {
+	.booth.closed {
 		text-align: center;
+	}
+	.booth-sign {
+		margin: 0 0 1.25rem;
+		text-align: center;
+		font-family: var(--display);
+		text-transform: uppercase;
+		letter-spacing: 0.15em;
+		font-size: clamp(1.4rem, 3vw, 2rem);
+		/* gold leaf on glass */
+		background: linear-gradient(#fff2c2, #e7b75a 45%, #9c6f24 55%, #f5d27a);
+		-webkit-background-clip: text;
+		background-clip: text;
+		color: transparent;
+		filter: drop-shadow(0 0 0.5rem rgb(231 183 90 / 0.35));
 	}
 	header {
 		display: flex;
 		gap: 1.25rem;
 		align-items: center;
-		border-bottom: 3px double var(--ink);
+		border-bottom: 1px solid rgb(231 183 90 / 0.35);
 		padding-bottom: 1rem;
 		margin-bottom: 1.5rem;
 	}
 	header img {
 		width: 5rem;
-		border: 4px solid var(--ink);
-		filter: sepia(0.3) contrast(1.1);
+		border: 3px solid var(--gold);
 	}
 	.kicker {
 		margin: 0;
@@ -160,22 +184,24 @@
 		text-transform: uppercase;
 		letter-spacing: 0.2em;
 		font-size: 0.8rem;
-		color: var(--red);
+		color: var(--gold);
 	}
 	h1 {
 		margin: 0.2rem 0;
 		font-family: var(--display);
+		font-weight: 400;
 		text-transform: uppercase;
 		font-size: clamp(1.6rem, 4vw, 2.6rem);
 		line-height: 1;
+		color: var(--cream);
 	}
 	header p {
 		margin: 0.2rem 0 0;
+		color: var(--muted);
 	}
 	.notice {
 		text-align: center;
-		color: var(--red);
-		font-weight: 700;
+		color: var(--gold-light);
 	}
 	.curtain {
 		height: 2.2rem;
@@ -183,14 +209,16 @@
 		width: 85%;
 		display: grid;
 		place-items: center;
-		background: repeating-linear-gradient(90deg, #8e1820 0 10px, #b5202b 10px 20px);
-		box-shadow: 0 0.4rem 0 var(--ink);
+		background: repeating-linear-gradient(90deg, #7a141c 0 10px, #a51d27 10px 20px);
+		box-shadow:
+			0 0.4rem 0 #3a2414,
+			0 0 2rem rgb(255 58 76 / 0.25);
 	}
 	.curtain span {
 		font-family: var(--display);
 		text-transform: uppercase;
 		letter-spacing: 0.4em;
-		color: var(--paper);
+		color: var(--cream);
 		font-size: 0.85rem;
 	}
 	.hall {
@@ -211,35 +239,37 @@
 		text-align: center;
 		font-weight: 700;
 		font-size: 0.8rem;
+		color: var(--gold);
 	}
 	.seat {
 		width: 1.75rem;
 		height: 1.75rem;
 		padding: 0;
-		border: 2px solid var(--ink);
+		border: 2px solid #3a0a0e;
 		border-radius: 0.6rem 0.6rem 0.25rem 0.25rem;
-		background: var(--red);
-		color: rgb(239 226 196 / 0.75);
+		background: linear-gradient(#c62a35, #8e1820);
+		color: rgb(246 236 210 / 0.7);
 		font-family: var(--type);
 		font-size: 0.6rem;
 		cursor: pointer;
 	}
 	button.seat:hover:not(:disabled) {
-		background: #d8323d;
+		background: linear-gradient(#e23b47, #a51d27);
 	}
 	.seat.aisle {
 		margin-right: 1.1rem;
 	}
 	.seat.taken {
-		background: #6d5a49;
+		background: #2b2226;
+		border-color: #1a1416;
 		color: transparent;
 		cursor: not-allowed;
-		opacity: 0.55;
 	}
 	.seat.mine {
-		background: var(--mustard);
-		color: var(--ink);
+		background: linear-gradient(#ffe7a3, var(--gold));
+		color: #1b1006;
 		font-weight: 700;
+		box-shadow: 0 0 0.8rem rgb(255 227 154 / 0.7);
 	}
 	.legend {
 		display: flex;
@@ -247,6 +277,7 @@
 		align-items: center;
 		gap: 0.5rem;
 		font-size: 0.8rem;
+		color: var(--muted);
 	}
 	.legend .seat {
 		display: inline-block;
@@ -262,12 +293,13 @@
 		gap: 1rem;
 		flex-wrap: wrap;
 		margin-top: 1.5rem;
-		border-top: 2px dashed var(--ink-soft);
+		border-top: 1px solid rgb(231 183 90 / 0.35);
 		padding-top: 1rem;
 	}
 	.footer p {
 		margin: 0;
 		font-weight: 700;
+		color: var(--cream);
 	}
 	.go,
 	.ghost {
@@ -275,23 +307,24 @@
 		text-transform: uppercase;
 		letter-spacing: 0.18em;
 		font-size: 1rem;
-		padding: 0.7rem 1.3rem;
+		padding: 0.7rem 1.4rem;
+		border-radius: 999px;
 		cursor: pointer;
 	}
 	.go {
-		background: var(--red);
-		color: var(--paper);
+		color: #1b1006;
+		background: linear-gradient(#ffe7a3, var(--gold));
 		border: 0;
-		box-shadow: 0.2rem 0.2rem 0 var(--ink);
+		box-shadow: 0 0 1.2rem rgb(231 183 90 / 0.5);
 	}
 	.go:disabled {
-		opacity: 0.5;
+		opacity: 0.45;
 		cursor: default;
 	}
 	.ghost {
 		background: none;
-		border: 2px solid var(--ink);
-		color: var(--ink);
+		border: 2px solid var(--gold);
+		color: var(--gold-light);
 	}
 	/* The classic red roll ticket. */
 	.ticket {
@@ -305,8 +338,9 @@
 		border: 3px solid #fff4dc;
 		outline: 6px solid #c22a33;
 		transform: rotate(-2deg);
-		box-shadow: 0.6rem 0.8rem 0 rgb(0 0 0 / 0.25);
-		mask: radial-gradient(circle at 0 50%, transparent 0.8rem, #000 0.85rem) left / 51% 100% no-repeat,
+		box-shadow: 0 0 2.5rem rgb(255 58 76 / 0.35);
+		mask:
+			radial-gradient(circle at 0 50%, transparent 0.8rem, #000 0.85rem) left / 51% 100% no-repeat,
 			radial-gradient(circle at 100% 50%, transparent 0.8rem, #000 0.85rem) right / 51% 100% no-repeat;
 	}
 	.ticket p {
@@ -339,7 +373,7 @@
 		letter-spacing: 0.2em;
 	}
 	.error {
-		color: var(--red);
+		color: var(--neon);
 		font-weight: 700;
 	}
 	@media (max-width: 640px) {
