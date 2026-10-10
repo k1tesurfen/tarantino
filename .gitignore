@@ -10,7 +10,7 @@ CLAUDE.md
 
 # Config exports / backups (contain addresses and RFID UIDs)
 *.tarantino.json
-backups/
+/backups/
 
 # Python
 __pycache__/
@@ -33,4 +33,4 @@ frontend/.svelte-kit/
 .DS_Store
 
 # Local dev data
-data/
+/data/
