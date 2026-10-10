@@ -4,7 +4,7 @@ import { getCinemaProgramme, getNow, playRoom, type CinemaProgramme, type NowPla
 const THEME_KEY = 'tarantino.theme';
 
 /** Themes with a complete layout; the toggle only appears when there is more than one. */
-export const AVAILABLE_THEMES: ThemeId[] = ['modern'];
+export const AVAILABLE_THEMES: ThemeId[] = ['modern', 'retro'];
 
 function storedTheme(): ThemeId | null {
 	try {

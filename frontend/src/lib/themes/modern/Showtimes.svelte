@@ -1,24 +1,19 @@
 <script lang="ts">
-	import { showtimeStates } from '$lib/cinema/api';
+	import { showtimeChips } from '$lib/cinema/tickets';
 
 	let { date, times, href }: { date: string; times: string[]; href?: string } = $props();
 
-	const states = $derived(showtimeStates(date, times));
-	// Fake showtimes, but the reel always waits: after the last one there is a late show.
-	const lateShow = $derived(times.length > 0 && !states.includes('next'));
+	const chips = $derived(showtimeChips(date, times));
 </script>
 
 <div class="times">
-	{#each times as time, i}
+	{#each chips as chip}
 		{#if href}
-			<a class="time {states[i]}" {href} title={states[i] === 'past' ? 'Already started, but the reel waits for you' : 'Get tickets'}>{time}</a>
+			<a class="time {chip.state}" {href} title={chip.state === 'past' ? 'Already started, but the reel waits for you' : 'Get tickets'}>{chip.label}</a>
 		{:else}
-			<span class="time {states[i]}">{time}</span>
+			<span class="time {chip.state}">{chip.label}</span>
 		{/if}
 	{/each}
-	{#if lateShow}
-		{#if href}<a class="time next" {href}>Late show</a>{:else}<span class="time next">Late show</span>{/if}
-	{/if}
 </div>
 
 <style>

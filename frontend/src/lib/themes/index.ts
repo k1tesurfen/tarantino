@@ -1,6 +1,7 @@
 import type { Component, Snippet } from 'svelte';
 import type { ThemeId, TitleDetail } from '$lib/cinema/api';
 import * as modern from './modern';
+import * as retro from './retro';
 
 /** A cinema theme provides a complete layout for every cinema page. */
 export type Theme = {
@@ -10,6 +11,6 @@ export type Theme = {
 	Tickets: Component<{ room: number }>;
 };
 
-const themes: Partial<Record<ThemeId, Theme>> = { modern };
+const themes: Record<ThemeId, Theme> = { modern, retro };
 
 export const themeFor = (id: ThemeId): Theme => themes[id] ?? modern;

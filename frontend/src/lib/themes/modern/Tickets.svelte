@@ -1,45 +1,31 @@
 <script lang="ts">
 	import { imageUrl } from '$lib/api';
-	import { formatCinemaDate, formatRuntime, showtimeStates } from '$lib/cinema/api';
-	import { seededRandom } from '$lib/cinema/random';
+	import { formatCinemaDate, formatRuntime } from '$lib/cinema/api';
 	import { cinema } from '$lib/cinema/state.svelte';
+	import {
+		AISLES_AFTER,
+		MAX_SEATS,
+		SEAT_ROWS,
+		SEATS_PER_ROW,
+		bookedSeats,
+		ticketNumber as makeTicketNumber,
+		ticketTime
+	} from '$lib/cinema/tickets';
 
 	let { room: roomNumber }: { room: number } = $props();
-
-	const ROWS = 'ABCDEFGH'.split('');
-	const SEATS = 14;
-	const AISLES = new Set([3, 11]); // a gap after these seat numbers
-	const MAX_SEATS = 6;
 
 	const programme = $derived(cinema.programme);
 	const room = $derived(programme?.rooms.find((r) => r.number === roomNumber));
 	const item = $derived(room?.item);
 
-	/** Already "booked" seats: stable for the day; a sold-out room keeps one seat for you. */
-	const booked = $derived.by(() => {
-		if (!programme || !room) return new Set<string>();
-		const random = seededRandom(`${programme.date}/${room.number}`);
-		const taken = new Set<string>();
-		for (const row of ROWS) {
-			for (let seat = 1; seat <= SEATS; seat++) {
-				if (room.sold_out || random() < 0.38) taken.add(`${row}${seat}`);
-			}
-		}
-		if (room.sold_out) taken.delete('E7');
-		return taken;
-	});
+	const booked = $derived(programme && room ? bookedSeats(programme.date, room) : new Set<string>());
 
 	let selected = $state<string[]>([]);
 	let step = $state<'seats' | 'ticket'>('seats');
 	let error = $state<string | null>(null);
 	let starting = $state(false);
 
-	const showtime = $derived.by(() => {
-		if (!programme || !room) return 'Now';
-		const states = showtimeStates(programme.date, room.showtimes);
-		const next = states.indexOf('next');
-		return next >= 0 ? room.showtimes[next] : 'Now';
-	});
+	const showtime = $derived(programme && room ? ticketTime(programme.date, room) : 'Now');
 
 	function toggle(seat: string) {
 		if (booked.has(seat)) return;
@@ -59,9 +45,7 @@
 		}
 	}
 
-	const ticketNumber = $derived(
-		programme ? `${programme.date.replaceAll('-', '')}-${String(roomNumber).padStart(2, '0')}-${selected.join('')}` : ''
-	);
+	const ticketNumber = $derived(programme ? makeTicketNumber(programme.date, roomNumber, selected) : '');
 </script>
 
 <svelte:head><title>Tickets · {cinema.name}</title></svelte:head>
@@ -94,16 +78,16 @@
 				{/if}
 				<div class="screen">Screen</div>
 				<div class="hall" role="group" aria-label="Seat map">
-					{#each ROWS as row}
+					{#each SEAT_ROWS as row}
 						<div class="row">
 							<span class="row-label">{row}</span>
-							{#each Array.from({ length: SEATS }, (_, i) => i + 1) as seat}
+							{#each Array.from({ length: SEATS_PER_ROW }, (_, i) => i + 1) as seat}
 								{@const id = `${row}${seat}`}
 								<button
 									class="seat"
 									class:taken={booked.has(id)}
 									class:mine={selected.includes(id)}
-									class:aisle={AISLES.has(seat)}
+									class:aisle={AISLES_AFTER.has(seat)}
 									disabled={booked.has(id)}
 									aria-pressed={selected.includes(id)}
 									aria-label="Row {row} seat {seat}{booked.has(id) ? ' (taken)' : ''}"
