@@ -138,6 +138,8 @@
 	.poster img {
 		display: block;
 		width: 100%;
+		aspect-ratio: 2 / 3; /* reserve the space while the poster loads */
+		object-fit: cover;
 		filter: sepia(0.3) saturate(0.9) contrast(1.1);
 	}
 	.poster::after {

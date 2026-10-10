@@ -154,6 +154,8 @@
 	}
 	.poster img {
 		width: 100%;
+		aspect-ratio: 2 / 3; /* reserve the space while the poster loads */
+		object-fit: cover;
 		border-radius: 0.75rem;
 		box-shadow: 0 2rem 4rem rgb(0 0 0 / 0.6);
 	}

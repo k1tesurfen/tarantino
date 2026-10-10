@@ -93,7 +93,7 @@
 								{#if room.sticky}<span class="stamp small">Now serialized</span>{/if}
 							</a>
 							<div class="serial-body">
-								<p class="room">Lounge {room.number} · {room.name}</p>
+								<p class="room">{room.number} · {room.name}</p>
 								<h3><a href="/film/{room.item.id}">{room.item.name}</a></h3>
 								<p class="facts">
 									{room.item.unplayed_count != null ? `${room.item.unplayed_count} chapters to go` : 'A serial'}
@@ -102,7 +102,7 @@
 							</div>
 						{:else}
 							<div class="serial-body">
-								<p class="room">Lounge {room.number} · {room.name}</p>
+								<p class="room">{room.number} · {room.name}</p>
 								<h3>Dark tonight</h3>
 							</div>
 						{/if}
