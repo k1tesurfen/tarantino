@@ -176,7 +176,8 @@
 		align-items: center;
 		gap: 0.4rem;
 	}
-	.button {
+	/* Scoped under .row so it outranks the layout's global link colour. */
+	.row .button {
 		background: var(--accent);
 		color: var(--bg);
 		border-radius: 0.35rem;

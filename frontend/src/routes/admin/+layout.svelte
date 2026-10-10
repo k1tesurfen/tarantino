@@ -36,6 +36,7 @@
 </script>
 
 <div class="admin">
+<div class="admin-inner">
 	<header>
 		<a class="brand" href="/admin">tarantino <span>admin</span></a>
 		{#if !onLogin}
@@ -62,21 +63,22 @@
 		{@render children()}
 	{/if}
 </div>
+</div>
 
 <style>
-	:global(body) {
+	.admin {
 		--bg: #121316;
 		--panel: #1b1c20;
 		--line: #2a2c31;
 		--text: #e9e7e2;
 		--muted: #8a8790;
 		--accent: #e8c46a;
-		margin: 0;
+		min-height: 100vh;
 		background: var(--bg);
 		color: var(--text);
 		font-family: system-ui, sans-serif;
 	}
-	.admin {
+	.admin-inner {
 		max-width: 78rem;
 		margin: 0 auto;
 		padding: 1rem 1rem 4rem;
