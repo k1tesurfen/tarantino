@@ -7,6 +7,7 @@
 	let { children }: { children: Snippet } = $props();
 
 	let session = $state<AdminSession | null>(null);
+	let unreachable = $state(false);
 	const onLogin = $derived(page.url.pathname === '/admin/login');
 
 	const nav = [
@@ -19,7 +20,15 @@
 	];
 
 	async function check() {
-		session = await getSession();
+		try {
+			session = await getSession();
+			unreachable = false;
+		} catch {
+			// tarantino is restarting or down: keep trying
+			unreachable = true;
+			setTimeout(check, 5000);
+			return;
+		}
 		if (!session.authenticated && !onLogin) goto('/admin/login');
 	}
 
@@ -52,6 +61,13 @@
 			</div>
 		{/if}
 	</header>
+
+	{#if unreachable}
+		<p class="banner warn">
+			tarantino is not responding. It may be restarting; this page retries every few seconds. On the mini-PC:
+			<code>sudo journalctl -u tarantino.service -n 50</code>
+		</p>
+	{/if}
 
 	{#if session && !session.password_set && !onLogin}
 		<p class="banner warn">

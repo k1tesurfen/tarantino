@@ -112,6 +112,17 @@ class ShowOrchestrator:
 
     # -- public API ---------------------------------------------------------
 
+    def recover_interrupted(self) -> int:
+        """Fail shows that were still running when tarantino stopped (crash, restart, reboot)."""
+        with self.session_factory.begin() as session:
+            shows = session.query(Show).filter(Show.state == "running").all()
+            for show in shows:
+                show.state, show.error, show.finished_at = "failed", "Interrupted by a restart of tarantino", _now()
+                show.steps = [s | {"status": "cancelled"} if s.get("status") == "running" else s for s in show.steps]
+        if shows:
+            log.warning("Marked %d interrupted show(s) as failed", len(shows))
+        return len(shows)
+
     async def start(self, item_id: str, trigger: str, room_id: int | None = None) -> int:
         """Start a show for a library item and return its id (runs in the background)."""
         item = self._get_item(item_id)

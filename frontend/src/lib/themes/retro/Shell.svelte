@@ -58,6 +58,9 @@
 	</header>
 
 	<main>
+		{#if cinema.offline && programme}
+			<p class="reconnecting" role="status">The projectionist is changing reels. Reconnecting…</p>
+		{/if}
 		{#if cinema.error && !programme}
 			<p class="offline">The lights are out. Come back after the intermission. ({cinema.error})</p>
 		{:else}
@@ -202,6 +205,15 @@
 		margin: 0 auto;
 		padding: 2rem clamp(0.75rem, 3vw, 2.5rem) 2rem;
 		box-sizing: border-box;
+	}
+	.reconnecting {
+		margin: 0 auto 1rem;
+		width: fit-content;
+		padding: 0.35rem 0.9rem;
+		border-radius: 999px;
+		font-size: 0.85rem;
+		color: var(--muted);
+		border: 1px solid currentColor;
 	}
 	.offline {
 		text-align: center;

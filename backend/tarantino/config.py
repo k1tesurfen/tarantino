@@ -33,6 +33,8 @@ class Settings(BaseSettings):
     admin_password: SecretStr | None = None
     ha_token: SecretStr | None = None
 
+    log_level: str = "INFO"
+
 
 SECRET_FILE = "secret.key"
 

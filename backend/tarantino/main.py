@@ -10,6 +10,7 @@ from tarantino import __version__
 from tarantino import auth
 from tarantino.api import admin, cassettes, cinema, config, events, images, programme, rooms, vhs
 from tarantino.config import Settings, get_settings
+from tarantino.logs import setup_logging
 from tarantino.projector.adb import Adb
 from tarantino.projector.cast import cast_wake
 from tarantino.projector.remote import RemoteLink
@@ -22,8 +23,7 @@ PLACEHOLDER_HTML = """<!doctype html>
 <h1>tarantino</h1><p>The backend is running, but the frontend has not been built yet.</p>
 </body></html>"""
 
-logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
-logging.getLogger("httpx").setLevel(logging.WARNING)  # one line per Jellyfin request is too noisy
+log = logging.getLogger("tarantino")
 
 
 def create_app(
@@ -40,6 +40,10 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        log.info(
+            "tarantino %s starting (data in %s, Jellyfin %s)", __version__, settings.data_dir,
+            settings.jellyfin_url if settings.jellyfin_api_key else "not configured",
+        )  # fmt: skip
         services = Services.create(settings, jellyfin_transport, adb_factory, timing, remote, waker)
         app.state.services = services
         services.start(run_jobs=run_jobs)
@@ -47,6 +51,7 @@ def create_app(
             yield
         finally:
             await services.close()
+            log.info("tarantino stopped")
 
     app = FastAPI(
         title="tarantino", version=__version__, lifespan=lifespan,
@@ -87,4 +92,5 @@ def create_app(
     return app
 
 
+setup_logging(get_settings().log_level)
 app = create_app()

@@ -18,6 +18,8 @@ function storedTheme(): ThemeId | null {
 class CinemaState {
 	programme = $state<CinemaProgramme | null>(null);
 	error = $state<string | null>(null);
+	/** The live connection dropped (e.g. tarantino is restarting); the browser reconnects by itself. */
+	offline = $state(false);
 	theme = $state<ThemeId>('modern');
 	now = $state<NowPlaying | null>(null);
 	/** The show started from this browser, followed live until it finishes. */
@@ -44,7 +46,20 @@ class CinemaState {
 			if (show.state !== 'running') this.refreshNow();
 		});
 		source.addEventListener('programme', () => this.load());
-		setInterval(() => this.refreshNow(), 30_000);
+		source.onerror = () => {
+			if (source.readyState !== EventSource.OPEN) this.offline = true;
+		};
+		source.onopen = () => {
+			if (!this.offline) return;
+			// Back after a restart: events may have been missed (rollover, a show finishing).
+			this.offline = false;
+			this.load();
+			this.refreshNow();
+		};
+		setInterval(() => {
+			if (!this.programme) this.load();
+			this.refreshNow();
+		}, 30_000);
 	}
 
 	async load() {
@@ -61,6 +76,8 @@ class CinemaState {
 
 	async refreshNow() {
 		this.now = await getNow().catch(() => this.now);
+		const latest = this.now?.show;
+		if (latest && this.show?.id === latest.id) this.show = latest;
 	}
 
 	setTheme(theme: ThemeId) {

@@ -3,8 +3,8 @@
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
-from datetime import datetime
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 
 import httpx
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -28,6 +28,7 @@ from tarantino.settings import SettingsStore
 from tarantino.shows.orchestrator import ShowOrchestrator, Timing
 
 LIBRARY_SYNC_MINUTES = 15
+SYNC_RETRY_SECONDS = 60  # first retry after a failed sync (Jellyfin down); doubles up to the sync interval
 
 log = logging.getLogger(__name__)
 
@@ -49,6 +50,7 @@ class Services:
     jellyfin: JellyfinClient | None = None
     library: LibrarySync | None = None
     shows: ShowOrchestrator | None = None
+    _sync_failures: int = field(default=0, init=False)
 
     @classmethod
     def create(
@@ -84,6 +86,7 @@ class Services:
                 services.events, projector, timing,
             )  # fmt: skip
             services.shows.on_playing = services._on_room_playing
+            services.shows.recover_interrupted()
         return services
 
     def start(self, run_jobs: bool = True) -> None:
@@ -109,7 +112,23 @@ class Services:
 
     async def _sync_and_programme(self) -> None:
         await self.library.run()
+        if self.library.last_error:
+            self._schedule_sync_retry()
+        else:
+            self._sync_failures = 0
         await self.ensure_programme()
+
+    def _schedule_sync_retry(self) -> None:
+        """Retry soon when Jellyfin is down (e.g. still booting), backing off to the normal interval."""
+        self._sync_failures += 1
+        delay = min(SYNC_RETRY_SECONDS * 2 ** (self._sync_failures - 1), LIBRARY_SYNC_MINUTES * 60)
+        if delay >= LIBRARY_SYNC_MINUTES * 60:
+            return  # the regular job comes round just as soon
+        self.scheduler.add_job(
+            self._sync_and_programme, "date", run_date=datetime.now() + timedelta(seconds=delay),
+            id="library-retry", replace_existing=True,
+        )  # fmt: skip
+        log.info("Retrying the library sync in %d s", delay)
 
     async def ensure_programme(self) -> None:
         if await asyncio.to_thread(self.programme.ensure_day):

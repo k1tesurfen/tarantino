@@ -12,7 +12,7 @@ EnvironmentFile=/etc/tarantino/tarantino.env
 Environment=TARANTINO_DATA_DIR=/var/lib/tarantino
 Environment=TARANTINO_FRONTEND_DIR=@APP_DIR@/frontend/build
 Environment=HOME=/var/lib/tarantino
-ExecStart=@APP_DIR@/.venv/bin/uvicorn tarantino.main:app --host 0.0.0.0 --port 80 --no-access-log
+ExecStart=@APP_DIR@/.venv/bin/uvicorn tarantino.main:app --host 0.0.0.0 --port 80 --no-access-log --timeout-graceful-shutdown 5
 Restart=always
 RestartSec=3
 

@@ -10,7 +10,7 @@ Tarantino also runs an imaginary multiplex. Every day it generates a fresh progr
 
 ## Status
 
-🚧 **Planning phase.** Nothing is implemented yet. See [`plan.md`](plan.md) for the V1 implementation plan.
+**V1 is feature-complete** and running on the mini-PC: the programme engine, both cinema themes, the admin website, projector control, the VHS cassette API with learn mode, and config export/import. [`plan.md`](plan.md) has the V1 plan and its decisions. [`docs/operations.md`](docs/operations.md) covers day-to-day operation, logs, backups and troubleshooting.
 
 ---
 
@@ -22,7 +22,7 @@ Tarantino also runs an imaginary multiplex. Every day it generates a fresh progr
 | **Mini-PC** | Server | Debian Linux. Runs the Jellyfin server bare-metal and hosts a Home Assistant VM. Runs Tarantino 24/7. |
 | **Jellyfin server** | Media library & streaming | Serves 4K uncompressed Blu-ray rips. Source of all metadata, artwork and trailer links. |
 | **Home Assistant** (VM on the mini-PC) | Home automation | Lights, and later projector power, AVR, etc. |
-| **Projector** | Playback device | Android TV with the Jellyfin Android TV app. Controlled via Jellyfin sessions and network ADB. |
+| **Projector** | Playback device | Android TV with the Jellyfin Android TV app. Woken via Cast, controlled via the Android TV remote protocol and Jellyfin sessions (ADB as a fallback). |
 | **Motorized projector screen** (planned) | Screen | Lowered while a USB port on the mini-PC supplies power, raised when power is cut. |
 | **VHS recorder** (retro) | Physical movie selector | Houses an ESP32 and an RFID reader. Cassettes carry RFID stickers. |
 | **ESP32 + RFID reader** | Cassette detection | Reads a cassette's RFID tag and reports it to Tarantino over the network. |
@@ -116,7 +116,7 @@ sudoedit /etc/tarantino/tarantino.env        # fill in secrets, then:
 sudo systemctl restart tarantino.service
 ```
 
-Updates are run as the same user, without sudo: `/opt/tarantino/deploy/update.sh`.
+Updates are run as the same user, without sudo: `/opt/tarantino/deploy/update.sh`. See [`docs/operations.md`](docs/operations.md) for logs, the CLI, backups and troubleshooting.
 
 ## Development
 

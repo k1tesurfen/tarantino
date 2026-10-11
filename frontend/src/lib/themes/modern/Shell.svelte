@@ -41,6 +41,9 @@
 	</header>
 
 	<main>
+		{#if cinema.offline && programme}
+			<p class="reconnecting" role="status">Reconnecting to the box office…</p>
+		{/if}
 		{#if cinema.error && !programme}
 			<p class="offline">The box office is closed right now ({cinema.error}).</p>
 		{:else}
@@ -151,6 +154,15 @@
 	}
 	main {
 		flex: 1;
+	}
+	.reconnecting {
+		margin: 0 auto 1rem;
+		width: fit-content;
+		padding: 0.35rem 0.9rem;
+		border-radius: 999px;
+		font-size: 0.85rem;
+		color: var(--muted);
+		border: 1px solid currentColor;
 	}
 	.offline {
 		padding: 6rem 1rem;
