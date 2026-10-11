@@ -77,7 +77,15 @@ The specific addresses and names are kept out of the repo on purpose.
 - **Desktop-first** (about 80% of use), but still usable on a phone. It won't be used on the projector or a tablet.
 - **Theme selector** with **full layouts per theme**. V1 ships two themes:
   - **Modern**, default name **"apLex"**: a multiplex look.
-  - **Retro**, default name **"Red Apple Cinema"**: a Tarantino/grindhouse/VHS look.
+  - **Retro**, default name **"Red Apple Cinema"**: a 70s picture palace at night (revised after the first version). It has:
+    - the cinema name as a bulb sign
+    - neon script
+    - a marquee of chasing bulbs around a backlit attraction board listing tonight's double bills
+    - double bills in lit poster cases
+    - serials in lobby frames and a backlit concession menu with Tarantino references
+    - a glass box office with a red ADMIT ONE ticket
+
+    The chasing bulbs stop for visitors who prefer reduced motion.
   - Names are editable per theme in admin. Each visitor's choice is remembered in their browser, and admin sets the default.
 - **Series section:** series rooms get their own section ("TV lounge" style), separate from the auditoriums.
 - **Trailers:** YouTube embeds built from Jellyfin's `RemoteTrailers` (from TMDB).
@@ -257,7 +265,7 @@ Each milestone ends with a test on the mini-PC and a commit to `main`.
 | **M3** ✅ | **Programme engine**: rooms with filters and weights, presets, daily generation, cooldown, series stickiness, drop series, re-roll/swap, fake showtimes, unit tests on generation rules | 6 movie rooms and 4 series rooms are generated correctly. Tests cover cooldown, no duplicates, stickiness, finished/new-season handling and fallbacks |
 | **M4** ✅ | **Admin website + config export/import**: login, dashboard (all status cards, now playing, recent shows), programme page (overrides), rooms editor with filter builder and live pool size, cassettes with learn mode and unknown-UID log, settings (theme names/default, rollover, cooldowns, projector address), **export/import with preview diff, CLI export/import, auto-export in `update.sh` and nightly** | Everything configurable without touching the DB. Export → wipe DB → import restores an identical setup, verified by the roundtrip test and once by hand on the mini-PC |
 | **M5** ✅ | **Cinema website — Modern "apLex"**: today's programme, film detail with trailer, series lounge section, quick play and the ticket flow, sold-out badges, now-playing banner, show progress overlay, theme toggle | You can pick and start a film from a desktop browser. Layout works on a phone |
-| **M6** ✅ | **Cinema website — Retro "Red Apple Cinema"**: full alternative layout for all cinema pages | You can switch themes and the choice is remembered |
+| **M6** ✅ | **Cinema website — Retro "Red Apple Cinema"**: full alternative layout for all cinema pages, as a 70s picture palace at night with a bulb sign, neon, a marquee board and lit poster cases | You can switch themes and the choice is remembered |
 | **M7** | **VHS API & CLI**: insert/eject endpoints, learn mode, `tarantino` CLI | `tarantino learn 3 --uid FAKE0003` followed by `tarantino play 3` starts room 3's film on the projector |
 | **M8** | **Hardening**: logging (journald), error states in the UI, restart resilience (lazy generation, resumable state), README/ops docs | Survives a reboot of the mini-PC, Jellyfin restarts and the projector being off, with clear status shown |
 
