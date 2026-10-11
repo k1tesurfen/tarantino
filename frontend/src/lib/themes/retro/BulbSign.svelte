@@ -6,23 +6,26 @@
 	 */
 	let { text, chase = true }: { text: string; chase?: boolean } = $props();
 
-	const PER_LETTER = 96; // glyph width plus generous spacing, in sign units
-	const FONT_SIZE = 112;
-	const BASELINE = 116;
+	// In sign units. The letters are large relative to bulbs and inset, so the
+	// red faces stay solid even with a ring of bulbs around every stroke.
+	const PER_LETTER = 176; // glyph width plus generous spacing
+	const FONT_SIZE = 220;
+	const BASELINE = 226;
+	const HEIGHT = 290;
 
 	const label = $derived(text.toUpperCase());
-	const width = $derived(Math.max(440, label.length * PER_LETTER + 80));
+	const width = $derived(Math.max(800, label.length * PER_LETTER + 120));
 	const uid = Math.random().toString(36).slice(2, 8);
 </script>
 
-<svg class="sign" class:chase viewBox="0 0 {width} 160" role="img" aria-label={text}>
+<svg class="sign" class:chase viewBox="0 0 {width} {HEIGHT}" role="img" aria-label={text}>
 	<defs>
 		<!-- shrink the red faces inward, leaving the outline free for the bulbs -->
 		<filter id="inset-{uid}" x="-5%" y="-20%" width="110%" height="140%">
-			<feMorphology operator="erode" radius="10" />
+			<feMorphology operator="erode" radius="9" />
 		</filter>
 		<filter id="glow-{uid}" x="-5%" y="-20%" width="110%" height="140%">
-			<feGaussianBlur stdDeviation="2.2" result="blur" />
+			<feGaussianBlur stdDeviation="2.5" result="blur" />
 			<feMerge>
 				<feMergeNode in="blur" />
 				<feMergeNode in="SourceGraphic" />
@@ -31,7 +34,7 @@
 	</defs>
 
 	{#snippet letters(cls: string, style = '')}
-		<text class={cls} {style} x={width / 2} y={BASELINE} font-size={FONT_SIZE} textLength={width - 80} lengthAdjust="spacing"
+		<text class={cls} {style} x={width / 2} y={BASELINE} font-size={FONT_SIZE} textLength={width - 120} lengthAdjust="spacing"
 			>{label}</text
 		>
 	{/snippet}
@@ -61,7 +64,7 @@
 	.box {
 		fill: #1c0b0c;
 		stroke: #1c0b0c;
-		stroke-width: 26;
+		stroke-width: 30;
 		stroke-linejoin: round;
 	}
 	.face {
@@ -70,10 +73,10 @@
 	.bulbs {
 		fill: none;
 		stroke: #ffe7a3;
-		stroke-width: 7;
+		stroke-width: 9;
 		stroke-linecap: round;
-		stroke-dasharray: 0 20;
-		stroke-dashoffset: calc(var(--phase) * -6.67px);
+		stroke-dasharray: 0 24;
+		stroke-dashoffset: calc(var(--phase) * -8px);
 	}
 	.chase .bulbs {
 		animation: chase 1.8s infinite;
