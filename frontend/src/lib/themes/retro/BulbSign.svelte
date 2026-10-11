@@ -19,7 +19,7 @@
 	<defs>
 		<!-- shrink the red faces inward, leaving the outline free for the bulbs -->
 		<filter id="inset-{uid}" x="-5%" y="-20%" width="110%" height="140%">
-			<feMorphology operator="erode" radius="6" />
+			<feMorphology operator="erode" radius="10" />
 		</filter>
 		<filter id="glow-{uid}" x="-5%" y="-20%" width="110%" height="140%">
 			<feGaussianBlur stdDeviation="2.2" result="blur" />
@@ -61,7 +61,7 @@
 	.box {
 		fill: #1c0b0c;
 		stroke: #1c0b0c;
-		stroke-width: 22;
+		stroke-width: 26;
 		stroke-linejoin: round;
 	}
 	.face {
@@ -70,7 +70,7 @@
 	.bulbs {
 		fill: none;
 		stroke: #ffe7a3;
-		stroke-width: 8;
+		stroke-width: 7;
 		stroke-linecap: round;
 		stroke-dasharray: 0 20;
 		stroke-dashoffset: calc(var(--phase) * -6.67px);
