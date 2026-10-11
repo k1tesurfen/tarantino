@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from tarantino import __version__
 from tarantino.configio.schema import (
+    CassetteExport,
     ConfigExport,
     ItemRef,
     ProgrammeEntryExport,
@@ -17,7 +18,7 @@ from tarantino.configio.schema import (
     StateExport,
     migrate_document,
 )
-from tarantino.models import LibraryItem, ProgrammeEntry, Room, SeriesAssignment, Setting
+from tarantino.models import Cassette, LibraryItem, ProgrammeEntry, Room, SeriesAssignment, Setting
 from tarantino.settings import SettingsStore
 
 log = logging.getLogger(__name__)
@@ -62,6 +63,10 @@ def export_config(session_factory: sessionmaker, settings: SettingsStore, includ
             exported_at=datetime.now(),
             settings=settings.get(),
             rooms=[RoomExport.model_validate(r, from_attributes=True) for r in rooms],
+            cassettes=[
+                CassetteExport(uid=c.uid, room_number=numbers[c.room_id], learned_at=c.learned_at)
+                for c in session.scalars(select(Cassette).order_by(Cassette.uid))
+            ],
             state=state,
         )
 
@@ -98,6 +103,7 @@ class ImportPreview:
     rooms_added: list[str] = field(default_factory=list)
     rooms_removed: list[str] = field(default_factory=list)
     rooms_changed: list[str] = field(default_factory=list)
+    cassettes_changed: list[str] = field(default_factory=list)  # "UID: room a -> room b"
     state_included: bool = False
     series_assignments: int = 0
     programme_entries: int = 0
@@ -109,6 +115,10 @@ class ImportPreview:
 
 def _room_label(number: int, name: str) -> str:
     return f"{number} · {name}"
+
+
+def _room_or_none(number: int | None) -> str:
+    return f"room {number}" if number is not None else "none"
 
 
 def preview_import(session_factory: sessionmaker, settings: SettingsStore, export: ConfigExport) -> ImportPreview:
@@ -131,6 +141,14 @@ def preview_import(session_factory: sessionmaker, settings: SettingsStore, expor
             elif RoomExport.model_validate(existing[number], from_attributes=True) != room:
                 preview.rooms_changed.append(_room_label(number, room.name))
         preview.rooms_removed = [_room_label(n, r.name) for n, r in sorted(existing.items()) if n not in incoming]
+
+        numbers = {r.id: r.number for r in existing.values()}
+        current_cassettes = {c.uid: numbers[c.room_id] for c in session.scalars(select(Cassette))}
+        incoming_cassettes = {c.uid: c.room_number for c in export.cassettes}
+        for uid in sorted(current_cassettes.keys() | incoming_cassettes.keys()):
+            before, after = current_cassettes.get(uid), incoming_cassettes.get(uid)
+            if before != after:
+                preview.cassettes_changed.append(f"{uid}: {_room_or_none(before)} → {_room_or_none(after)}")
 
         if export.state:
             resolver = ItemResolver(session)
@@ -173,9 +191,14 @@ def apply_import(session_factory: sessionmaker, export: ConfigExport) -> None:
             session.add(room)
         session.flush()
 
+        room_ids = {r.number: r.id for r in session.scalars(select(Room))}
+        session.execute(delete(Cassette))
+        for c in export.cassettes:
+            if c.room_number in room_ids:
+                session.add(Cassette(uid=c.uid, room_id=room_ids[c.room_number], learned_at=c.learned_at))
+
         if export.state is None:
             return
-        room_ids = {r.number: r.id for r in session.scalars(select(Room))}
         resolver = ItemResolver(session)
         session.execute(delete(SeriesAssignment))
         session.execute(delete(ProgrammeEntry))

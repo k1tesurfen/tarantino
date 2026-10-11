@@ -7,7 +7,7 @@ from tarantino.configio import schema
 from tarantino.configio.backups import KEEP_PER_REASON, BackupStore
 from tarantino.configio.transfer import apply_import, export_config, parse_export, preview_import
 from tarantino.db import Base
-from tarantino.models import LibraryItem, ProgrammeEntry, Room, SeriesAssignment, Setting
+from tarantino.models import Cassette, LibraryItem, ProgrammeEntry, Room, SeriesAssignment, Setting
 from tarantino.programme.rules import MovieFilters, Weights
 from tarantino.settings import AppSettings, SettingsStore
 from test_programme import item, room_id, standard_library, world  # noqa: F401 (fixture)
@@ -21,6 +21,7 @@ def configured(w):
     with w.session_factory.begin() as session:
         room = session.scalar(select(Room).where(Room.number == 4))
         room.name, room.filters = "Grindhouse", {"watched": "unwatched", "genres_any": ["Horror"], "year_max": 1990}
+        session.add(Cassette(uid="FAKE0004", room_id=room.id, learned_at=w.clock()))
     w.programme.ensure_day()
     series_id = w.entries()[8]
     w.programme.mark_playing(room_id(w, 8), series_id)
@@ -40,6 +41,7 @@ def snapshot(w) -> dict:
                  Weights.model_validate(r.weights).model_dump_json())
                 for r in session.scalars(select(Room))
             ),  # fmt: skip
+            "cassettes": sorted((c.uid, c.room_id, c.learned_at) for c in session.scalars(select(Cassette))),
             "assignments": sorted((a.series_id, a.started_at) for a in session.scalars(select(SeriesAssignment))),
             "programme": sorted((str(e.cinema_date), e.room_id, e.item_id or "", tuple(e.showtimes))
                                 for e in session.scalars(select(ProgrammeEntry))),  # fmt: skip
@@ -48,7 +50,7 @@ def snapshot(w) -> dict:
 
 def wipe(w) -> None:
     with w.session_factory.begin() as session:
-        for model in (ProgrammeEntry, SeriesAssignment, Room, Setting):
+        for model in (Cassette, ProgrammeEntry, SeriesAssignment, Room, Setting):
             session.execute(delete(model))
 
 
@@ -193,3 +195,11 @@ def test_config_api_roundtrip(client):
     assert client.get("/api/admin/settings").json()["theme_retro_name"] == "Something Else"
     assert client.get("/api/admin/backups/..%2Fsecret.key").status_code == 404
     assert client.post("/api/admin/config/import", json={"nope": 1}).status_code == 422
+
+
+def test_schema_1_exports_still_import(world):
+    store = configured(world)
+    document = json.loads(export_config(world.session_factory, store).model_dump_json())
+    document["schema_version"] = 1
+    del document["cassettes"]
+    assert parse_export(document).cassettes == []

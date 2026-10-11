@@ -193,14 +193,15 @@ export const rerollRoom = (room?: number) => post<Programme>('/api/admin/program
 export const dropSeries = (room: number) => post<Programme>(`/api/admin/rooms/${room}/drop-series`);
 export const playRoom = (room: number) => post<Show>(`/api/admin/rooms/${room}/play`);
 
-type EventHandlers = { show?: (show: Show) => void; programme?: () => void };
+type EventHandlers = { show?: (show: Show) => void; programme?: () => void; vhs?: (update: VhsUpdate) => void };
 
 /** Subscribe to server-sent events; returns an unsubscribe function. */
 export function subscribe(handlers: EventHandlers): () => void {
 	const source = new EventSource('/api/events');
-	const { show, programme } = handlers;
+	const { show, programme, vhs } = handlers;
 	if (show) source.addEventListener('show', (e) => show(JSON.parse((e as MessageEvent).data)));
 	if (programme) source.addEventListener('programme', () => programme());
+	if (vhs) source.addEventListener('vhs', (e) => vhs(JSON.parse((e as MessageEvent).data)));
 	return () => source.close();
 }
 
@@ -276,6 +277,7 @@ export type ImportPreview = {
 	rooms_added: string[];
 	rooms_removed: string[];
 	rooms_changed: string[];
+	cassettes_changed: string[];
 	state_included: boolean;
 	series_assignments: number;
 	programme_entries: number;
@@ -297,3 +299,38 @@ export const backupUrl = (name: string) => `/api/admin/backups/${encodeURICompon
 export const previewBackup = (name: string) => send<ImportPreview>('POST', `${backupUrl(name)}/preview`);
 export const restoreBackup = (name: string) =>
 	send<{ imported: boolean; backup: string }>('POST', `${backupUrl(name)}/restore`);
+
+// -- cassettes -----------------------------------------------------------
+
+export type LearnState = { room: number; room_name: string; expires_at: string; seconds_left: number };
+
+export type VhsEvent = {
+	id: number;
+	action: 'insert' | 'eject';
+	uid: string | null;
+	room: number | null;
+	outcome: 'played' | 'learned' | 'unknown' | 'failed' | 'ignored';
+	message: string | null;
+	show_id: number | null;
+	at: string;
+};
+
+export type CassetteRoom = {
+	number: number;
+	name: string;
+	kind: 'movie' | 'series';
+	active: boolean;
+	cassettes: { uid: string; learned_at: string }[];
+};
+
+export type CassetteOverview = { rooms: CassetteRoom[]; learn: LearnState | null; events: VhsEvent[] };
+
+export type VhsUpdate = { event: VhsEvent | null; learn: LearnState | null };
+
+export const getCassettes = () => request<CassetteOverview>('/api/admin/cassettes');
+export const armLearnMode = (room: number) => send<LearnState>('POST', '/api/admin/cassettes/learn', { room });
+export const cancelLearnMode = () => send<void>('DELETE', '/api/admin/cassettes/learn');
+export const assignCassette = (uid: string, room: number) =>
+	send<CassetteOverview>('PUT', `/api/admin/cassettes/${encodeURIComponent(uid)}`, { room });
+export const removeCassette = (uid: string) =>
+	send<CassetteOverview>('DELETE', `/api/admin/cassettes/${encodeURIComponent(uid)}`);

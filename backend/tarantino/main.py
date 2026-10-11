@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 
 from tarantino import __version__
 from tarantino import auth
-from tarantino.api import admin, cinema, config, events, images, programme, rooms
+from tarantino.api import admin, cassettes, cinema, config, events, images, programme, rooms, vhs
 from tarantino.config import Settings, get_settings
 from tarantino.projector.adb import Adb
 from tarantino.projector.cast import cast_wake
@@ -63,9 +63,11 @@ def create_app(
     app.include_router(programme.router, dependencies=admin_only)
     app.include_router(rooms.router, dependencies=admin_only)
     app.include_router(config.router, dependencies=admin_only)
+    app.include_router(cassettes.router, dependencies=admin_only)
     app.include_router(cinema.router)
     app.include_router(images.router)
     app.include_router(events.router)
+    app.include_router(vhs.router)
 
     frontend_dir = settings.frontend_dir.resolve()
 

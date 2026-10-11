@@ -72,7 +72,12 @@
 	const formatSize = (bytes: number) => `${(bytes / 1024).toFixed(1)} KB`;
 	const formatValue = (value: unknown) => (value === null ? '—' : JSON.stringify(value));
 	const hasChanges = (p: ImportPreview) =>
-		Object.keys(p.settings_changed).length + p.rooms_added.length + p.rooms_changed.length + p.rooms_removed.length > 0 ||
+		Object.keys(p.settings_changed).length +
+			p.rooms_added.length +
+			p.rooms_changed.length +
+			p.rooms_removed.length +
+			p.cassettes_changed.length >
+			0 ||
 		p.state_included;
 
 	onMount(load);
@@ -119,6 +124,12 @@
 				{#each p.rooms_added as room}<li class="added">+ {room}</li>{/each}
 				{#each p.rooms_changed as room}<li>~ {room}</li>{/each}
 				{#each p.rooms_removed as room}<li class="removed">− {room}</li>{/each}
+			</ul>
+		{/if}
+		{#if p.cassettes_changed.length}
+			<h4>Cassettes</h4>
+			<ul>
+				{#each p.cassettes_changed as change}<li>{change}</li>{/each}
 			</ul>
 		{/if}
 		{#if p.state_included}

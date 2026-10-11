@@ -11,12 +11,12 @@ from pydantic import BaseModel, Field
 from tarantino.programme.rules import MovieFilters, Weights
 from tarantino.settings import AppSettings
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 # Every database table must be listed exactly once (enforced by a test):
-CONFIG_TABLES = {"setting", "room"}  # always exported
+CONFIG_TABLES = {"setting", "room", "cassette"}  # always exported
 STATE_TABLES = {"series_assignment", "programme_entry"}  # exported unless state is excluded
-REBUILDABLE_TABLES = {"library_item", "show", "alembic_version"}  # cache and logs, never exported
+REBUILDABLE_TABLES = {"library_item", "show", "vhs_event", "alembic_version"}  # cache and logs, never exported
 
 
 class ItemRef(BaseModel):
@@ -36,6 +36,12 @@ class RoomExport(BaseModel):
     filters: MovieFilters = Field(default_factory=MovieFilters)
     weights: Weights = Field(default_factory=Weights)
     active: bool = True
+
+
+class CassetteExport(BaseModel):
+    uid: str
+    room_number: int
+    learned_at: datetime
 
 
 class SeriesAssignmentExport(BaseModel):
@@ -68,6 +74,7 @@ class ConfigExport(BaseModel):
     exported_at: datetime
     settings: AppSettings
     rooms: list[RoomExport]
+    cassettes: list[CassetteExport] = Field(default_factory=list)
     state: StateExport | None = None
 
 
@@ -85,4 +92,8 @@ def migrate_document(document: dict) -> dict:
     return document
 
 
-MIGRATIONS: dict = {}  # {from_version: callable(document) -> document}
+def _v1_to_v2(document: dict) -> dict:
+    return document | {"cassettes": []}  # cassettes were added in schema 2
+
+
+MIGRATIONS: dict = {1: _v1_to_v2}  # {from_version: callable(document) -> document}

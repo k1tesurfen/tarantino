@@ -13,6 +13,7 @@
 		{ href: '/admin', label: 'Dashboard' },
 		{ href: '/admin/programme', label: 'Programme' },
 		{ href: '/admin/rooms', label: 'Rooms' },
+		{ href: '/admin/cassettes', label: 'Cassettes' },
 		{ href: '/admin/settings', label: 'Settings' },
 		{ href: '/admin/backups', label: 'Backups' }
 	];

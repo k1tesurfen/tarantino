@@ -10,6 +10,7 @@ readable (the deploy user is in the service group), otherwise with a password
 
 import json
 import sys
+import time
 from pathlib import Path
 
 import httpx
@@ -21,6 +22,8 @@ from tarantino.config import SECRET_FILE
 app = typer.Typer(help="tarantino home cinema CLI", no_args_is_help=True)
 config_app = typer.Typer(help="Export and import the admin configuration.", no_args_is_help=True)
 app.add_typer(config_app, name="config")
+vhs_app = typer.Typer(help="Simulate the VHS recorder.", no_args_is_help=True)
+app.add_typer(vhs_app, name="vhs")
 
 DEFAULT_URL = "http://localhost"
 DEFAULT_DATA_DIR = Path("/var/lib/tarantino")
@@ -142,3 +145,125 @@ def config_import(
         raise typer.Exit(1)
     result = check(client.post("/api/admin/config/import", json=document)).json()
     typer.echo(f"imported (previous configuration saved as {result['backup']})")
+
+
+# -- VHS recorder -------------------------------------------------------------
+
+OUTCOMES = {
+    "played": "starting room {room}",
+    "learned": "learned for room {room}",
+    "unknown": "unknown cassette, ignored (learn it first: tarantino learn <room> --uid <uid>)",
+    "ignored": "ignored",
+}
+
+
+def describe_event(event: dict) -> str:
+    text = OUTCOMES.get(event["outcome"], event["outcome"]).format(room=event.get("room"))
+    return f"{text} ({event['message']})" if event.get("message") else text
+
+
+def follow_show(client: httpx.Client, show_id: int, timeout: float = 120) -> None:
+    """Print a show's steps as they happen until it plays, fails or is replaced."""
+    printed = 0
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        response = client.get("/api/admin/shows")
+        if response.status_code == 401:
+            typer.echo("(not following the show: no admin access)")
+            return
+        show = next((s for s in check(response).json() if s["id"] == show_id), None)
+        if show is None:
+            return
+        for step in show["steps"][printed:]:
+            if step["status"] == "running":
+                break
+            typer.echo(f"  {step['step']}: {step['status']}{' - ' + step['message'] if step['message'] else ''}")
+            printed += 1
+        if show["state"] != "running":
+            if show["state"] == "playing":
+                typer.echo(f"playing: {show['item_name']}")
+                return
+            fail(f"show {show['state']}: {show['error']}")
+        time.sleep(1)
+    fail("gave up waiting for the show (it may still start)")
+
+
+def insert_uid(ctx: typer.Context, uid: str, wait: bool) -> None:
+    event = check(httpx.post(f"{ctx.obj.url}/api/vhs/insert", json={"uid": uid}, timeout=30)).json()
+    typer.echo(f"{event['uid']}: {describe_event(event)}")
+    if wait and event["outcome"] == "played" and event.get("show_id"):
+        follow_show(ctx.obj.client(), event["show_id"])
+
+
+@vhs_app.command("insert")
+def vhs_insert(
+    ctx: typer.Context,
+    uid: str = typer.Argument(..., help="RFID UID of the cassette."),
+    wait: bool = typer.Option(True, help="Follow the show until it plays (needs admin access)."),
+) -> None:
+    """Insert a cassette, exactly as the VHS recorder would."""
+    insert_uid(ctx, uid, wait)
+
+
+@vhs_app.command("eject")
+def vhs_eject(ctx: typer.Context, uid: str | None = typer.Argument(None, help="RFID UID (optional).")) -> None:
+    """Eject the cassette (logged only; the show keeps playing)."""
+    check(httpx.post(f"{ctx.obj.url}/api/vhs/eject", json={"uid": uid}, timeout=10))
+    typer.echo("ejected")
+
+
+@app.command()
+def learn(
+    ctx: typer.Context,
+    room: int = typer.Argument(..., help="Room (and cassette) number."),
+    uid: str | None = typer.Option(None, "--uid", help="Simulate this cassette instead of waiting for the recorder."),
+    seconds: int = typer.Option(120, help="How long to wait for a cassette."),
+) -> None:
+    """Bind a cassette to a room: arms learn mode, then the next insert is learned."""
+    client = ctx.obj.client()
+    state = check(client.post("/api/admin/cassettes/learn", json={"room": room, "seconds": seconds})).json()
+    if uid:
+        insert_uid(ctx, uid, wait=False)
+        return
+    typer.echo(f"Insert the cassette for room {room} ({state['room_name']}) within {seconds} s ...")
+    last_event = (check(client.get("/api/admin/cassettes")).json()["events"] or [{"id": 0}])[0]["id"]
+    try:
+        while True:
+            time.sleep(1)
+            overview = check(client.get("/api/admin/cassettes")).json()
+            learned = [e for e in overview["events"] if e["id"] > last_event and e["outcome"] == "learned"]
+            if learned:
+                typer.echo(f"{learned[0]['uid']}: {describe_event(learned[0])}")
+                return
+            if overview["learn"] is None:
+                fail("no cassette was inserted")
+    except KeyboardInterrupt:
+        client.delete("/api/admin/cassettes/learn")
+        fail("cancelled")
+
+
+@app.command()
+def play(
+    ctx: typer.Context,
+    room: int = typer.Argument(..., help="Room (and cassette) number."),
+    wait: bool = typer.Option(True, help="Follow the show until it plays."),
+) -> None:
+    """Insert room N's learned cassette through the real VHS endpoint."""
+    rooms = check(ctx.obj.client().get("/api/admin/cassettes")).json()["rooms"]
+    match = next((r for r in rooms if r["number"] == room), None)
+    if match is None:
+        fail(f"no room {room}")
+    if not match["cassettes"]:
+        fail(f"room {room} has no cassette yet; run: tarantino learn {room} --uid <uid>")
+    insert_uid(ctx, match["cassettes"][0]["uid"], wait)
+
+
+@app.command()
+def cassettes(ctx: typer.Context) -> None:
+    """List rooms and their cassettes."""
+    overview = check(ctx.obj.client().get("/api/admin/cassettes")).json()
+    for r in overview["rooms"]:
+        uids = ", ".join(c["uid"] for c in r["cassettes"]) or "-"
+        typer.echo(f"{r['number']:>3}  {r['name']:<28} {uids}")
+    if overview["learn"]:
+        typer.echo(f"learn mode: room {overview['learn']['room']} ({overview['learn']['seconds_left']} s left)")

@@ -113,3 +113,29 @@ class SeriesAssignment(Base):
     started_at: Mapped[datetime] = mapped_column(DateTime)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime)
     dropped_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class Cassette(Base):
+    """An RFID-tagged VHS cassette, bound to a room by learn mode; part of the config export."""
+
+    __tablename__ = "cassette"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    uid: Mapped[str] = mapped_column(String(32), unique=True)  # normalised: uppercase, no separators
+    room_id: Mapped[int] = mapped_column(ForeignKey("room.id", ondelete="CASCADE"), index=True)
+    learned_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class VhsEvent(Base):
+    """Raw log of what the VHS recorder reported, including unknown cassettes."""
+
+    __tablename__ = "vhs_event"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    action: Mapped[str] = mapped_column(String(16))  # "insert" | "eject"
+    uid: Mapped[str | None] = mapped_column(String(32), index=True)
+    room_number: Mapped[int | None] = mapped_column(Integer)
+    outcome: Mapped[str] = mapped_column(String(16))  # played | learned | unknown | failed | ignored
+    message: Mapped[str | None] = mapped_column(String)
+    show_id: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime, index=True)

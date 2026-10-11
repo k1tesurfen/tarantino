@@ -12,6 +12,7 @@ from fastapi import Request
 from sqlalchemy import Engine
 from sqlalchemy.orm import sessionmaker
 
+from tarantino.cassettes import Cassettes
 from tarantino.config import Settings, load_secret
 from tarantino.configio.backups import BackupStore
 from tarantino.db import create_db_engine, make_session_factory, migrate
@@ -43,6 +44,7 @@ class Services:
     programme: Programme
     secret: bytes
     backups: BackupStore
+    cassettes: Cassettes
     adb_factory: Callable[[str], Adb] = Adb
     jellyfin: JellyfinClient | None = None
     library: LibrarySync | None = None
@@ -66,10 +68,11 @@ class Services:
         projector = Projector(settings, remote, adb_factory, waker)
         programme = Programme(session_factory, settings)
         programme.ensure_rooms()
+        events = EventBus()
         services = cls(
-            env, engine, session_factory, settings, AsyncIOScheduler(), EventBus(), projector, programme,
+            env, engine, session_factory, settings, AsyncIOScheduler(), events, projector, programme,
             load_secret(env.data_dir), BackupStore(env.data_dir / "backups", session_factory, settings),
-            adb_factory,
+            Cassettes(session_factory, events), adb_factory,
         )  # fmt: skip
         if env.jellyfin_api_key:
             services.jellyfin = JellyfinClient(
@@ -127,6 +130,26 @@ class Services:
         if entry is None or entry.item_id is None:
             raise ProgrammeError(f"Nothing is showing in {room.name} today")
         return await self.shows.start(entry.item_id, trigger, room_id=room.id)
+
+    async def insert_cassette(self, uid: str) -> dict:
+        """A cassette went into the VHS recorder: learn it, or start its room's show.
+
+        Returns the logged event; raises ProgrammeError if the room cannot play.
+        """
+        if learn := self.cassettes.take_learn():
+            note = self.cassettes.bind(uid, learn.room_number)
+            return self.cassettes.record("insert", uid, "learned", learn.room_number, note)
+        room_number = self.cassettes.room_for(uid)
+        if room_number is None:
+            return self.cassettes.record("insert", uid, "unknown", message="Not learned; ignored")
+        if self.cassettes.is_repeat(uid):
+            return self.cassettes.record("insert", uid, "ignored", room_number, "Repeated read; show already started")
+        try:
+            show_id = await self.start_room(room_number, trigger="vhs")
+        except ProgrammeError as exc:
+            self.cassettes.record("insert", uid, "failed", room_number, str(exc))
+            raise
+        return self.cassettes.record("insert", uid, "played", room_number, show_id=show_id)
 
     async def close(self) -> None:
         self.scheduler.shutdown(wait=False)
