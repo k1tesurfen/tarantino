@@ -22,7 +22,7 @@
 	<defs>
 		<!-- shrink the red faces inward, leaving the outline free for the bulbs -->
 		<filter id="inset-{uid}" x="-5%" y="-20%" width="110%" height="140%">
-			<feMorphology operator="erode" radius="9" />
+			<feMorphology operator="erode" radius="12" />
 		</filter>
 		<filter id="glow-{uid}" x="-5%" y="-20%" width="110%" height="140%">
 			<feGaussianBlur stdDeviation="2.5" result="blur" />
@@ -53,7 +53,7 @@
 	.sign {
 		display: block;
 		width: 100%;
-		max-width: 68rem;
+		max-width: 85rem;
 		margin: 0 auto;
 		overflow: visible;
 	}
@@ -64,7 +64,7 @@
 	.box {
 		fill: #1c0b0c;
 		stroke: #1c0b0c;
-		stroke-width: 30;
+		stroke-width: 38;
 		stroke-linejoin: round;
 	}
 	.face {
@@ -73,10 +73,10 @@
 	.bulbs {
 		fill: none;
 		stroke: #ffe7a3;
-		stroke-width: 9;
+		stroke-width: 12.5;
 		stroke-linecap: round;
-		stroke-dasharray: 0 24;
-		stroke-dashoffset: calc(var(--phase) * -8px);
+		stroke-dasharray: 0 31;
+		stroke-dashoffset: calc(var(--phase) * -10.33px);
 	}
 	.chase .bulbs {
 		animation: chase 1.8s infinite;
