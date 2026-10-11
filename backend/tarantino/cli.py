@@ -159,7 +159,9 @@ OUTCOMES = {
 
 def describe_event(event: dict) -> str:
     text = OUTCOMES.get(event["outcome"], event["outcome"]).format(room=event.get("room"))
-    return f"{text} ({event['message']})" if event.get("message") else text
+    if event["outcome"] == "unknown" or not event.get("message"):
+        return text
+    return f"{text} ({event['message']})"
 
 
 def follow_show(client: httpx.Client, show_id: int, timeout: float = 120) -> None:
