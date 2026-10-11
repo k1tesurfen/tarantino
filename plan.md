@@ -97,6 +97,15 @@ The specific addresses and names are kept out of the repo on purpose.
 - **Learning mode:** in admin you "arm" room N, and the next UID posted to the same endpoint is bound to room N. No playback is triggered.
 - **Eject:** `POST /api/vhs/eject` is accepted and logged and does **nothing** else.
 - **Test CLI:** a `tarantino` CLI simulates the recorder, e.g. `tarantino vhs insert <uid>`, `tarantino play 3` (sends room 3's learned UID through the real endpoint) and `tarantino learn 3 --uid FAKE0003`.
+- **Details decided while implementing (M7):**
+  - **UIDs** are normalised: uppercase, with spaces, `:` and `-` removed. 2–32 letters or digits are allowed, not just hex, so fake UIDs like `FAKE0003` work.
+  - **Several cassettes per room** are allowed. A UID belongs to one room only, so learning a known cassette for another room moves it. `tarantino play N` uses the room's most recently learned cassette.
+  - **Learn mode** lasts 2 minutes (5–600 s via the API). It is held in memory only, so a restart cancels it. The admin page and `tarantino learn N` arm it. Without `--uid`, `tarantino learn N` waits for the real recorder.
+  - **Repeated reads:** an insert of the same cassette within 10 s of it starting a show is logged as `ignored`, so the reader can never restart a show by accident.
+  - **Responses:** the insert returns the logged event, whose `outcome` is `played`, `learned`, `unknown` or `ignored`. A room that can't play (closed today, Jellyfin not configured) returns `409` with a `detail` and is logged as `failed`.
+  - **The recorder log** (`vhs_event`) keeps the last 500 events. The admin *Cassettes* page shows it live over SSE, and unknown UIDs can be bound to a room from there.
+  - **Deleting a room** deletes its cassettes.
+  - **Export schema 2** adds `cassettes: [{uid, room_number, learned_at}]`. Schema 1 files are migrated with an empty list. The import preview lists cassette changes.
 
 ### Settings export / import (new)
 - **Purpose:** a set-up system (rooms, filters, cassettes, theme names, settings) must survive DB resets, reinstalls and development mishaps.
@@ -204,7 +213,7 @@ scripts/
   - identity and descriptive fields: id, type, name, year, provider IDs, genres, overview, runtime, ratings, trailer URLs, image tags, date added
   - watch state: `played`, `favorite`, `unplayed_count` (series)
 - `room` — number, name, kind (`movie` | `series`), filter JSON, weight JSON, sort order, active flag
-- `cassette` — RFID UID (normalised as uppercase hex) → room
+- `cassette` — RFID UID (normalised: uppercase letters and digits, no separators) → room; a room may have several
 - `programme_entry` — cinema date, room, item, fake showtimes, `first_started_at` (used for "sold out"), source (`generated` | `override`)
 - `series_assignment` — room, series, started/finished/dropped timestamps (stickiness)
 - `show` — one play attempt: trigger (web/vhs/admin), room, item, state, step log, error, timestamps
@@ -243,6 +252,14 @@ This is a cancellable state machine, and a new show cancels the running one.
 5. **confirm** — poll the session's `NowPlayingItem`. On success, mark the movie entry sold out and, for a series room, create the sticky assignment.
 - Every step is logged to the `show` record and streamed over SSE. The cinema site shows a "show is starting…" overlay, and the admin site shows the full step log.
 
+### Restart resilience and operations (M8)
+- **Shows interrupted by a restart:** at startup, any `show` still `running` is marked `failed` ("Interrupted by a restart of tarantino").
+- **Jellyfin down:** if the library sync fails (e.g. Jellyfin still booting after a reboot), it retries after 1, 2, 4 and 8 minutes, then falls back to the regular 15-minute job. The cached library keeps the cinema site working. Generation is skipped while the cache is empty, so a fresh install never closes every room.
+- **Shutdown:** uvicorn waits for open connections before it stops, and SSE streams never close by themselves. Every restart with a browser open therefore hung until systemd killed it after 90 s, which the journal on the mini-PC confirmed. The unit now passes `--timeout-graceful-shutdown 5`.
+- **Logging:** the app logs to stderr. Under systemd (`JOURNAL_STREAM` set), each line gets a `<N>` syslog priority prefix, so `journalctl -p warning` works. The level comes from `TARANTINO_LOG_LEVEL` (default `INFO`). httpx and APScheduler are limited to warnings.
+- **Browsers:** cinema pages show a "reconnecting" note when the SSE stream drops. On reconnect they reload the programme and the latest show, so a missed result still arrives. Admin pages show a banner and retry every 5 s while the server doesn't respond.
+- **Ops docs:** `docs/operations.md` covers the CLI, logs, the VHS API, failure behaviour, backups and troubleshooting.
+
 ### Status monitor
 Runs every 30 s, plus on demand from the admin dashboard. It checks:
 - **Jellyfin:** reachable, version, item counts.
@@ -266,8 +283,14 @@ Each milestone ends with a test on the mini-PC and a commit to `main`.
 | **M4** ✅ | **Admin website + config export/import**: login, dashboard (all status cards, now playing, recent shows), programme page (overrides), rooms editor with filter builder and live pool size, cassettes with learn mode and unknown-UID log, settings (theme names/default, rollover, cooldowns, projector address), **export/import with preview diff, CLI export/import, auto-export in `update.sh` and nightly** | Everything configurable without touching the DB. Export → wipe DB → import restores an identical setup, verified by the roundtrip test and once by hand on the mini-PC |
 | **M5** ✅ | **Cinema website — Modern "apLex"**: today's programme, film detail with trailer, series lounge section, quick play and the ticket flow, sold-out badges, now-playing banner, show progress overlay, theme toggle | You can pick and start a film from a desktop browser. Layout works on a phone |
 | **M6** ✅ | **Cinema website — Retro "Red Apple Cinema"**: full alternative layout for all cinema pages, as a 70s picture palace at night with a bulb sign, neon, a marquee board and lit poster cases | You can switch themes and the choice is remembered |
-| **M7** | **VHS API & CLI**: insert/eject endpoints, learn mode, `tarantino` CLI | `tarantino learn 3 --uid FAKE0003` followed by `tarantino play 3` starts room 3's film on the projector |
-| **M8** | **Hardening**: logging (journald), error states in the UI, restart resilience (lazy generation, resumable state), README/ops docs | Survives a reboot of the mini-PC, Jellyfin restarts and the projector being off, with clear status shown |
+| **M7** 🧪 | **VHS API & CLI**: insert/eject endpoints, learn mode, `tarantino` CLI | `tarantino learn 3 --uid FAKE0003` followed by `tarantino play 3` starts room 3's film on the projector |
+| **M8** 🧪 | **Hardening**: logging (journald), error states in the UI, restart resilience (lazy generation, resumable state), README/ops docs | Survives a reboot of the mini-PC, Jellyfin restarts and the projector being off, with clear status shown |
+
+🧪 = implemented and deployed; the "Done when" check on the mini-PC is still open (see below).
+
+**Open checks (as of 2026-10-11):**
+- **M7:** run `tarantino play 3` on the mini-PC; it should start room 3's film on the projector. The test cassette `FAKE0003` is bound to room 3 for this. Remove it on the admin *Cassettes* page afterwards. Learn, unknown inserts and eject were already verified on the mini-PC.
+- **M8:** reboot the mini-PC, restart Jellyfin, and start a show with the projector off; each should end with a clear status in admin and on the cinema site. Also confirm `systemctl restart tarantino.service` now finishes within a few seconds with a cinema page open (updated unit installed 2026-10-11).
 
 Export/import lands in M4, together with the admin pages. Cassette management (learn mode, unknown-UID log) moved from M4 to M7, next to the cassette API. From then on, every configuration you build is backed up before every update.
 
