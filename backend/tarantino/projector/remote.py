@@ -15,6 +15,9 @@ log = logging.getLogger(__name__)
 
 CLIENT_NAME = "tarantino"
 RETRY_SECONDS = 30
+# While a show waits for the remote (right after a wake), retry this often: the service
+# comes back some seconds after the wake, and the first attempt usually comes too early.
+WAITING_RETRY_SECONDS = 2.0
 
 
 class RemoteError(Exception):
@@ -37,6 +40,8 @@ class RemoteLink:
         self._task: asyncio.Task | None = None
         self._connected = asyncio.Event()
         self._retry_now = asyncio.Event()
+        self._waiting = 0  # callers in wait_connected
+        self.waiting_retry_seconds = WAITING_RETRY_SECONDS
 
     # -- lifecycle ----------------------------------------------------------
 
@@ -77,6 +82,9 @@ class RemoteLink:
                 return
             except (CannotConnect, ConnectionClosed) as exc:
                 self._set_state("unreachable", str(exc) or "Cannot connect")
+                if self._waiting:  # a show is waiting: keep trying at a short interval
+                    await asyncio.sleep(self.waiting_retry_seconds)
+                    continue
                 self._retry_now.clear()
                 try:  # retry later, or right away when someone needs the remote
                     await asyncio.wait_for(self._retry_now.wait(), RETRY_SECONDS)
@@ -103,16 +111,22 @@ class RemoteLink:
             self._connected.clear()
 
     async def wait_connected(self, timeout: float) -> bool:
-        """Wait for the connection (e.g. right after waking the projector); retries immediately."""
+        """Wait for the connection (e.g. right after waking the projector).
+
+        Retries right away, then every few seconds until connected or `timeout`.
+        """
         if self.connected:
             return True
         if self.state in ("unconfigured", "unpaired", "pairing"):
             return False
+        self._waiting += 1
         self._retry_now.set()
         try:
             await asyncio.wait_for(self._connected.wait(), timeout)
         except TimeoutError:
             return False
+        finally:
+            self._waiting -= 1
         return self.connected
 
     # -- pairing ------------------------------------------------------------

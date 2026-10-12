@@ -22,7 +22,7 @@ PLAY_STORE_PACKAGE = "com.android.vending"
 STORE_OPEN_TIMEOUT = 10.0
 STORE_SETTLE = 3.0  # let the details page render and focus its primary button
 STORE_LEAVE_TIMEOUT = 8.0
-REMOTE_CONNECT_TIMEOUT = 25.0  # the remote service comes back a few seconds after a wake
+REMOTE_CONNECT_TIMEOUT = 45.0  # the remote service comes back some seconds after a wake (seen: ~45 s)
 
 
 class ProjectorError(Exception):
