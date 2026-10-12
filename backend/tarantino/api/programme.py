@@ -1,7 +1,7 @@
 import asyncio
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from tarantino.programme.engine import ProgrammeError
@@ -52,9 +52,9 @@ async def drop_series(services: ServicesDep, number: int) -> dict:
 
 
 @router.post("/rooms/{number}/play", status_code=202)
-async def play_room(services: ServicesDep, number: int) -> dict:
+async def play_room(services: ServicesDep, number: int, next: Annotated[bool, Query()] = False) -> dict:
     try:
-        show_id = await services.start_room(number, trigger="admin")
+        show_id = await services.start_room(number, trigger="admin", part="next" if next else "current")
     except ProgrammeError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
     return services.shows.get_show(show_id)

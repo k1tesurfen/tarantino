@@ -8,16 +8,22 @@
 		removeCassette,
 		subscribe,
 		type CassetteOverview,
+		type CassetteTarget,
 		type VhsEvent
 	} from '$lib/api';
 
 	let overview = $state<CassetteOverview | null>(null);
 	let error = $state<string | null>(null);
 	let secondsLeft = $state(0);
-	let assignTo = $state<Record<string, number>>({});
+	let assignTo = $state<Record<string, CassetteTarget>>({});
 
 	const learn = $derived(overview?.learn ?? null);
-	const knownUids = $derived(new Set((overview?.rooms ?? []).flatMap((r) => r.cassettes.map((c) => c.uid))));
+	const knownUids = $derived(
+		new Set([
+			...(overview?.rooms ?? []).flatMap((r) => r.cassettes.map((c) => c.uid)),
+			...(overview?.franchise ?? []).map((c) => c.uid)
+		])
+	);
 
 	async function load() {
 		try {
@@ -39,8 +45,8 @@
 		await load();
 	}
 
-	function remove(uid: string, room: number) {
-		if (confirm(`Remove cassette ${uid} from room ${room}?`)) run(() => removeCassette(uid));
+	function remove(uid: string, from: string) {
+		if (confirm(`Remove cassette ${uid} from ${from}?`)) run(() => removeCassette(uid));
 	}
 
 	const outcomeLabel: Record<VhsEvent['outcome'], string> = {
@@ -69,16 +75,26 @@
 
 <p class="muted">
 	Each room is bound to one or more RFID-tagged cassettes. Inserting a cassette into the VHS recorder starts whatever
-	its room shows today. To bind a cassette, press <strong>Learn</strong> next to a room and insert the cassette within
-	two minutes. Learning never starts a film.
+	its room offers today (during a franchise marathon: the next part). The <strong>franchise cassette</strong> plays the
+	next part of the franchise started most recently today, wherever that was. To bind a cassette, press
+	<strong>Learn</strong> and insert the cassette within two minutes. Learning never starts a film.
+</p>
+<p class="muted">
+	The reader fires more than once per cassette, so a cassette that just started a show is ignored until a different
+	cassette is read or the cinema day ends. To play the same room twice in a row, use the website.
 </p>
 
 {#if learn}
 	<div class="learn">
 		<span class="dot"></span>
 		<div>
-			<strong>Insert the cassette for room {learn.room} · {learn.room_name} now</strong>
-			<div class="muted">The next cassette the recorder reads is bound to this room ({secondsLeft} s left).</div>
+			{#if learn.target === 'franchise'}
+				<strong>Insert the franchise cassette now</strong>
+				<div class="muted">The next cassette the recorder reads becomes the franchise cassette ({secondsLeft} s left).</div>
+			{:else}
+				<strong>Insert the cassette for room {learn.room} · {learn.room_name} now</strong>
+				<div class="muted">The next cassette the recorder reads is bound to this room ({secondsLeft} s left).</div>
+			{/if}
 		</div>
 		<button class="ghost" onclick={() => run(cancelLearnMode)}>Cancel</button>
 	</div>
@@ -98,7 +114,7 @@
 						{#each room.cassettes as cassette (cassette.uid)}
 							<span class="chip mono" title="Learned {formatTime(cassette.learned_at)}">
 								{cassette.uid}
-								<button class="x" aria-label="Remove {cassette.uid}" onclick={() => remove(cassette.uid, room.number)}
+								<button class="x" aria-label="Remove {cassette.uid}" onclick={() => remove(cassette.uid, `room ${room.number}`)}
 									>×</button
 								>
 							</span>
@@ -115,6 +131,29 @@
 					</td>
 				</tr>
 			{/each}
+			<tr class="franchise-row" class:armed={learn?.target === 'franchise'}>
+				<td class="num">F</td>
+				<td>Franchise cassette <span class="muted">· continues the latest franchise</span></td>
+				<td>
+					{#each overview.franchise as cassette (cassette.uid)}
+						<span class="chip mono" title="Learned {formatTime(cassette.learned_at)}">
+							{cassette.uid}
+							<button class="x" aria-label="Remove {cassette.uid}" onclick={() => remove(cassette.uid, 'the franchise cassette')}
+								>×</button
+							>
+						</span>
+					{:else}
+						<span class="muted">none</span>
+					{/each}
+				</td>
+				<td class="actions">
+					{#if learn?.target === 'franchise'}
+						<span class="muted">waiting…</span>
+					{:else}
+						<button class="ghost" onclick={() => run(() => armLearnMode('franchise'))}>Learn</button>
+					{/if}
+				</td>
+			</tr>
 		</tbody>
 	</table>
 
@@ -134,7 +173,7 @@
 						<td>{formatTime(event.at)}</td>
 						<td>{event.action}</td>
 						<td class="mono">{event.uid ?? '—'}</td>
-						<td>{event.room ?? '—'}</td>
+						<td>{event.room ?? (event.outcome === 'learned' ? 'F' : '—')}</td>
 						<td>
 							<span class="outcome {event.outcome}">{outcomeLabel[event.outcome]}</span>
 							{#if event.message}<span class="muted">{event.message}</span>{/if}
@@ -145,6 +184,7 @@
 								<select bind:value={assignTo[uid]} aria-label="Room for {uid}">
 									<option value={undefined}>Room…</option>
 									{#each overview.rooms as room}<option value={room.number}>{room.number} · {room.name}</option>{/each}
+									<option value="franchise">Franchise cassette</option>
 								</select>
 								<button
 									class="ghost"
@@ -221,6 +261,9 @@
 	}
 	tr.armed {
 		background: #2a2414;
+	}
+	tr.franchise-row td {
+		border-top: 2px solid var(--line);
 	}
 	tr.inactive td {
 		opacity: 0.6;

@@ -158,6 +158,8 @@ OUTCOMES = {
 
 
 def describe_event(event: dict) -> str:
+    if event["outcome"] == "learned" and event.get("room") is None:
+        return "learned as the franchise cassette"
     text = OUTCOMES.get(event["outcome"], event["outcome"]).format(room=event.get("room"))
     if event["outcome"] == "unknown" or not event.get("message"):
         return text
@@ -214,20 +216,32 @@ def vhs_eject(ctx: typer.Context, uid: str | None = typer.Argument(None, help="R
     typer.echo("ejected")
 
 
+def parse_target(value: str) -> int | None:
+    """A room number, or None for "franchise" (the franchise cassette)."""
+    if value.casefold() == "franchise":
+        return None
+    if not value.isdigit():
+        fail(f"expected a room number or 'franchise', not {value!r}")
+    return int(value)
+
+
 @app.command()
 def learn(
     ctx: typer.Context,
-    room: int = typer.Argument(..., help="Room (and cassette) number."),
+    room: str = typer.Argument(..., help="Room (and cassette) number, or 'franchise' for the franchise cassette."),
     uid: str | None = typer.Option(None, "--uid", help="Simulate this cassette instead of waiting for the recorder."),
     seconds: int = typer.Option(120, help="How long to wait for a cassette."),
 ) -> None:
-    """Bind a cassette to a room: arms learn mode, then the next insert is learned."""
+    """Bind a cassette to a room (or as the franchise cassette): arms learn mode, then the next insert is learned."""
+    number = parse_target(room)
+    target = {"room": number} if number is not None else {"franchise": True}
     client = ctx.obj.client()
-    state = check(client.post("/api/admin/cassettes/learn", json={"room": room, "seconds": seconds})).json()
+    state = check(client.post("/api/admin/cassettes/learn", json=target | {"seconds": seconds})).json()
     if uid:
         insert_uid(ctx, uid, wait=False)
         return
-    typer.echo(f"Insert the cassette for room {room} ({state['room_name']}) within {seconds} s ...")
+    label = f"room {number} ({state['room_name']})" if number is not None else "the franchise run"
+    typer.echo(f"Insert the cassette for {label} within {seconds} s ...")
     last_event = (check(client.get("/api/admin/cassettes")).json()["events"] or [{"id": 0}])[0]["id"]
     try:
         while True:
@@ -247,12 +261,19 @@ def learn(
 @app.command()
 def play(
     ctx: typer.Context,
-    room: int = typer.Argument(..., help="Room (and cassette) number."),
+    room: str = typer.Argument(..., help="Room (and cassette) number, or 'franchise'."),
     wait: bool = typer.Option(True, help="Follow the show until it plays."),
 ) -> None:
-    """Insert room N's learned cassette through the real VHS endpoint."""
-    rooms = check(ctx.obj.client().get("/api/admin/cassettes")).json()["rooms"]
-    match = next((r for r in rooms if r["number"] == room), None)
+    """Insert room N's (or the franchise) learned cassette through the real VHS endpoint."""
+    overview = check(ctx.obj.client().get("/api/admin/cassettes")).json()
+    number = parse_target(room)
+    if number is None:
+        if not overview["franchise"]:
+            fail("no franchise cassette yet; run: tarantino learn franchise --uid <uid>")
+        insert_uid(ctx, overview["franchise"][0]["uid"], wait)
+        return
+    room = number
+    match = next((r for r in overview["rooms"] if r["number"] == room), None)
     if match is None:
         fail(f"no room {room}")
     if not match["cassettes"]:
@@ -267,5 +288,6 @@ def cassettes(ctx: typer.Context) -> None:
     for r in overview["rooms"]:
         uids = ", ".join(c["uid"] for c in r["cassettes"]) or "-"
         typer.echo(f"{r['number']:>3}  {r['name']:<28} {uids}")
+    typer.echo(f"{'F':>3}  {'Franchise cassette':<28} {', '.join(c['uid'] for c in overview['franchise']) or '-'}")
     if overview["learn"]:
         typer.echo(f"learn mode: room {overview['learn']['room']} ({overview['learn']['seconds_left']} s left)")

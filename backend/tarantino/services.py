@@ -5,6 +5,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from typing import Literal
 
 import httpx
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -12,7 +13,7 @@ from fastapi import Request
 from sqlalchemy import Engine
 from sqlalchemy.orm import sessionmaker
 
-from tarantino.cassettes import Cassettes
+from tarantino.cassettes import FRANCHISE, Cassettes
 from tarantino.config import Settings, load_secret
 from tarantino.configio.backups import BackupStore
 from tarantino.db import create_db_engine, make_session_factory, migrate
@@ -26,6 +27,8 @@ from tarantino.programme.engine import Programme, ProgrammeError
 from tarantino.projector.remote import RemoteLink
 from tarantino.settings import SettingsStore
 from tarantino.shows.orchestrator import ShowOrchestrator, Timing
+
+Part = Literal["current", "next", "offer"]
 
 LIBRARY_SYNC_MINUTES = 15
 SYNC_RETRY_SECONDS = 60  # first retry after a failed sync (Jellyfin down); doubles up to the sync interval
@@ -138,37 +141,55 @@ class Services:
         self.programme.mark_playing(room_id, item_id)
         self.events.publish("programme", {"date": self.programme.today().isoformat()})
 
-    async def start_room(self, room_number: int, trigger: str) -> int:
-        """Start today's title of a room (cinema site, cassette, admin)."""
+    async def start_room(self, room_number: int, trigger: str, part: Part = "current") -> int:
+        """Start a room's title today (cinema site, cassette, admin).
+
+        `part`: "current" is the room's title (during a marathon the part started last),
+        "next" the next franchise part it offers, "offer" the next part if any, else the current one.
+        """
         if self.shows is None:
             raise ProgrammeError("Jellyfin is not configured")
         await self.ensure_programme()
-        room, entry = self.programme.entry_for_room(room_number)
+        room, offer = self.programme.room_offer(room_number)
         if not room.active:
             raise ProgrammeError(f"{room.name} is closed")
-        if entry is None or entry.item_id is None:
+        if offer.current is None:
             raise ProgrammeError(f"Nothing is showing in {room.name} today")
-        return await self.shows.start(entry.item_id, trigger, room_id=room.id)
+        if part == "next" and offer.next is None:
+            raise ProgrammeError(f"{room.name} has no next part to offer")
+        item = offer.next if part == "next" or (part == "offer" and offer.next) else offer.current
+        return await self.shows.start(item.id, trigger, room_id=room.id)
 
     async def insert_cassette(self, uid: str) -> dict:
-        """A cassette went into the VHS recorder: learn it, or start its room's show.
+        """A cassette went into the VHS recorder: learn it, or start what it stands for.
 
+        A room cassette plays what its room offers (during a marathon: the next part).
+        The franchise cassette plays the next part where a franchise movie started most recently today.
         Returns the logged event; raises ProgrammeError if the room cannot play.
         """
         if learn := self.cassettes.take_learn():
             note = self.cassettes.bind(uid, learn.room_number)
             return self.cassettes.record("insert", uid, "learned", learn.room_number, note)
-        room_number = self.cassettes.room_for(uid)
-        if room_number is None:
+        target = self.cassettes.lookup(uid)
+        if target is None:
             return self.cassettes.record("insert", uid, "unknown", message="Not learned; ignored")
-        if self.cassettes.is_repeat(uid):
+        room_number = target if target != FRANCHISE else None
+        if self.cassettes.is_guarded(uid, self.programme.day_start()):
             return self.cassettes.record("insert", uid, "ignored", room_number, "Repeated read; show already started")
+        if target == FRANCHISE:
+            found = await asyncio.to_thread(self.programme.franchise_room)
+            if found is None:
+                return self.cassettes.record("insert", uid, "ignored", message="No franchise running today")
+            room_number, name, next_id = found
+            if next_id is None:
+                return self.cassettes.record("insert", uid, "ignored", room_number, f"{name}: no next part today")
         try:
-            show_id = await self.start_room(room_number, trigger="vhs")
+            show_id = await self.start_room(room_number, trigger="vhs", part="next" if target == FRANCHISE else "offer")
         except ProgrammeError as exc:
             self.cassettes.record("insert", uid, "failed", room_number, str(exc))
             raise
-        return self.cassettes.record("insert", uid, "played", room_number, show_id=show_id)
+        message = "franchise cassette" if target == FRANCHISE else None
+        return self.cassettes.record("insert", uid, "played", room_number, message, show_id=show_id)
 
     async def close(self) -> None:
         self.scheduler.shutdown(wait=False)

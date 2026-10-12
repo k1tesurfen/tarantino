@@ -10,7 +10,7 @@ from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.orm import sessionmaker
 
 from tarantino.jellyfin.client import JellyfinClient, JellyfinError
-from tarantino.models import LibraryItem
+from tarantino.models import LibraryCollection, LibraryItem
 
 log = logging.getLogger(__name__)
 
@@ -139,6 +139,7 @@ class LibrarySync:
             # Never wipe the cache because of a misconfigured library or user.
             raise JellyfinError("Jellyfin returned no movies or series for this user")
         removed = await asyncio.to_thread(self._store, rows, synced_at)
+        await self._sync_collections(user_id, synced_at)
         return SyncResult(
             movies=sum(r["type"] == "movie" for r in rows),
             series=sum(r["type"] == "series" for r in rows),
@@ -154,6 +155,26 @@ class LibrarySync:
                 session.execute(upsert, rows[start : start + 500])
             result = session.execute(delete(LibraryItem).where(LibraryItem.synced_at < synced_at))
             return result.rowcount
+
+    async def _sync_collections(self, user_id: str, synced_at: datetime) -> None:
+        """Collection (BoxSet) names by TMDb collection id: the default franchise names. Optional."""
+        try:
+            names = {
+                str(tmdb): box.get("Name") or ""
+                async for box in self.client.iter_items(user_id, ["BoxSet"], ["ProviderIds"])
+                if (tmdb := (box.get("ProviderIds") or {}).get("Tmdb"))
+            }
+        except JellyfinError as exc:
+            log.warning("Collection names not synced: %s", exc)
+            return
+        rows = [{"id": cid, "name": name, "synced_at": synced_at} for cid, name in names.items() if name]
+        await asyncio.to_thread(self._store_collections, rows)
+
+    def _store_collections(self, rows: list[dict]) -> None:
+        with self.session_factory.begin() as session:
+            session.execute(delete(LibraryCollection))
+            if rows:
+                session.execute(insert(LibraryCollection), rows)
 
     def counts(self) -> dict[str, int]:
         with self.session_factory() as session:

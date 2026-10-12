@@ -8,7 +8,8 @@ export type Theme = {
 	Shell: Component<{ children: Snippet }>;
 	Home: Component;
 	Detail: Component<{ title: TitleDetail }>;
-	Tickets: Component<{ room: number }>;
+	/** `next`: tickets for the next franchise part the room offers (same-day marathon). */
+	Tickets: Component<{ room: number; next: boolean }>;
 };
 
 const themes: Record<ThemeId, Theme> = { modern, retro };

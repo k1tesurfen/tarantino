@@ -286,6 +286,8 @@ Each milestone ends with a test on the mini-PC and a commit to `main`.
 | **M7** 🧪 | **VHS API & CLI**: insert/eject endpoints, learn mode, `tarantino` CLI | `tarantino learn 3 --uid FAKE0003` followed by `tarantino play 3` starts room 3's film on the projector |
 | **M8** 🧪 | **Hardening**: logging (journald), error states in the UI, restart resilience (lazy generation, resumable state), README/ops docs | Survives a reboot of the mini-PC, Jellyfin restarts and the projector being off, with clear status shown |
 
+| **M9** 🧪 | **Franchise runs** (see [`plan-franchises.md`](plan-franchises.md)): franchise index, order rule, Tarantino-owned progress, continuation chance, same-day "Next", franchise cassette and read guard, admin page, website badge, export schema 3 | On the mini-PC: no sequel appears before its predecessor has been started. Starting part 1 offers "Next: part 2" in that room. The franchise cassette alternating with the room cassette plays a marathon. Repeated reads of the same cassette are ignored. A started franchise continues on following days at about the configured chance |
+
 🧪 = implemented and deployed; the "Done when" check on the mini-PC is still open (see below).
 
 **Open checks (as of 2026-10-11):**

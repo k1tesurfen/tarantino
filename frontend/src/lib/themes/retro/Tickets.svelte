@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { imageUrl } from '$lib/api';
-	import { formatCinemaDate } from '$lib/cinema/api';
+	import { formatCinemaDate, type CinemaItem } from '$lib/cinema/api';
 	import { cinema } from '$lib/cinema/state.svelte';
+	import { chapterLine } from './chapter';
 	import {
 		AISLES_AFTER,
 		MAX_SEATS,
@@ -12,7 +13,7 @@
 		ticketTime
 	} from '$lib/cinema/tickets';
 
-	let { room: roomNumber }: { room: number } = $props();
+	let { room: roomNumber, next = false }: { room: number; next?: boolean } = $props();
 
 	let selected = $state<string[]>([]);
 	let step = $state<'seats' | 'ticket'>('seats');
@@ -21,7 +22,9 @@
 
 	const programme = $derived(cinema.programme);
 	const room = $derived(programme?.rooms.find((r) => r.number === roomNumber));
-	const item = $derived(room?.item);
+	/** Once the reel rolls, the room moves on to the following part: keep this ticket as printed. */
+	let frozen = $state<CinemaItem | null>(null);
+	const item = $derived(frozen ?? (next ? room?.next : room?.item));
 	const booked = $derived(programme && room ? bookedSeats(programme.date, room) : new Set<string>());
 	const time = $derived(programme && room ? ticketTime(programme.date, room) : 'Now');
 	const serial = $derived(programme ? ticketNumber(programme.date, roomNumber, selected).replaceAll('-', ' ') : '');
@@ -35,10 +38,12 @@
 	async function roll() {
 		starting = true;
 		error = null;
+		frozen = item ?? null;
 		try {
-			await cinema.play(roomNumber);
+			await cinema.play(roomNumber, next);
 		} catch (e) {
 			error = (e as Error).message;
+			frozen = null;
 		} finally {
 			starting = false;
 		}
@@ -49,6 +54,12 @@
 
 {#if !programme}
 	<p class="loading">Opening the box office…</p>
+{:else if room && next && !item}
+	<div class="booth closed">
+		<h1>No reel to follow</h1>
+		<p>{room.name} has nothing held over right now.</p>
+		<a href="/tickets/{room.number}">◂ Back to the box office</a>
+	</div>
 {:else if !room || !item}
 	<div class="booth closed">
 		<h1>Dark tonight</h1>
@@ -62,14 +73,21 @@
 		<header>
 			<img src={imageUrl(item.id, 'Primary', item.poster_tag, 300)} alt="" />
 			<div>
-				<p class="kicker">{room.kind === 'movie' ? 'Auditorium' : 'Lounge'} {room.number} · {room.name}</p>
+				<p class="kicker">
+					{next ? 'Held over · Auditorium' : room.kind === 'movie' ? 'Auditorium' : 'Lounge'} {room.number} · {room.name}
+				</p>
 				<h1>{item.name}</h1>
+				{#if item.franchise}<p class="chapter neon pink">{chapterLine(item.franchise)}</p>{/if}
 				<p>{formatCinemaDate(programme.date)} · {time}</p>
 			</div>
 		</header>
 
 		{#if step === 'seats'}
-			{#if room.sold_out}<p class="notice">Sold out. The house keeps one seat for its best customer. That’s you.</p>{/if}
+			{#if next}
+				<p class="notice">The marathon rolls on. Keep your seat, the next reel is threading.</p>
+			{:else if room.sold_out}
+				<p class="notice">Sold out. The house keeps one seat for its best customer. That’s you.</p>
+			{/if}
 			<div class="curtain"><span>Screen</span></div>
 			<div class="hall" role="group" aria-label="Seat map">
 				{#each SEAT_ROWS as row}
@@ -102,6 +120,7 @@
 				<p class="house">{cinema.name}</p>
 				<p class="admit">Admit {selected.length === 1 ? 'one' : selected.length}</p>
 				<p class="film">{item.name}</p>
+				{#if item.franchise?.part}<p class="detail">{chapterLine(item.franchise)}</p>{/if}
 				<p class="detail">{formatCinemaDate(programme.date)} · {time} · Aud. {room.number} · Seats {selected.join(' ')}</p>
 				<p class="serial">No. {serial}</p>
 				<p class="keep">Keep this coupon · Not transferable · No refunds</p>
@@ -109,7 +128,7 @@
 			<div class="footer">
 				<button class="ghost" onclick={() => (step = 'seats')}>◂ Other seats</button>
 				<button class="go" disabled={starting} onclick={roll}>
-					{starting ? 'Threading…' : room.kind === 'movie' ? 'Roll the film ▸' : 'Roll the next chapter ▸'}
+					{starting ? 'Threading…' : next ? 'Roll the next reel ▸' : room.kind === 'movie' ? 'Roll the film ▸' : 'Roll the next chapter ▸'}
 				</button>
 			</div>
 			{#if error}<p class="error">{error}</p>{/if}
@@ -198,6 +217,11 @@
 	header p {
 		margin: 0.2rem 0 0;
 		color: var(--muted);
+	}
+	.chapter {
+		margin: 0.2rem 0 0.4rem;
+		font-size: 1.3rem;
+		line-height: 1.1;
 	}
 	.notice {
 		text-align: center;

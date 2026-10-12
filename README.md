@@ -64,7 +64,7 @@ Tarantino also runs an imaginary multiplex. Every day it generates a fresh progr
 ### 1. Tarantino core (mini-PC, always on)
 - **REST API**: cassette insert and eject events, playback, programme, admin.
 - **Cassette registry**: maps RFID tag UIDs to rooms, with a learning mode.
-- **Programme engine**: each day it generates one title per room according to that room's rules. Series stay in their room until finished.
+- **Programme engine**: each day it generates one title per room according to that room's rules. Series stay in their room until finished. Franchises (TMDb collections) play in order, with same-day marathons and a daily chance to continue.
 - **Show orchestrator**: the chain reaction triggered by a cassette or the cinema website:
   1. Resolve cassette → room → today's title.
   2. Wake the projector and open the Jellyfin app.

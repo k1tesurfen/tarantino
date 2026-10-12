@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { imageUrl } from '$lib/api';
-	import { formatRuntime, type CinemaRoom } from '$lib/cinema/api';
+	import { formatRuntime, franchiseLine, type CinemaRoom } from '$lib/cinema/api';
 	import { cinema } from '$lib/cinema/state.svelte';
 	import Showtimes from './Showtimes.svelte';
 	import TrailerModal from './TrailerModal.svelte';
@@ -48,6 +48,7 @@
 				{:else}
 					<h1>{hero.item.name}</h1>
 				{/if}
+				{#if hero.item.franchise}<p class="franchise">{franchiseLine(hero.item.franchise)}</p>{/if}
 				<p class="meta">
 					{meta(hero)}
 					{#if hero.item.community_rating}<span class="rating">★ {hero.item.community_rating.toFixed(1)}</span>{/if}
@@ -56,7 +57,10 @@
 					<p class="blurb">{hero.item.tagline ?? hero.item.overview}</p>
 				{/if}
 				<div class="actions">
-					<a class="btn primary" href="/tickets/{hero.number}">Get tickets</a>
+					{#if hero.next}
+						<a class="btn primary" href="/tickets/{hero.number}?next=1">Next: {hero.next.name}</a>
+					{/if}
+					<a class="btn" class:primary={!hero.next} href="/tickets/{hero.number}">Get tickets</a>
 					<a class="btn" href="/film/{hero.item.id}">Details</a>
 					{#if hero.item.trailers.length}
 						<button class="btn" onclick={() => (trailer = { id: hero.item!.trailers[0], title: hero.item!.name })}>
@@ -87,14 +91,30 @@
 						<a class="poster" href="/film/{room.item.id}">
 							<img src={imageUrl(room.item.id, 'Primary', room.item.poster_tag, 500)} alt={room.item.name} loading="lazy" />
 							<span class="badge">{room.number}</span>
-							{#if room.sold_out}<span class="ribbon">Sold out</span>{/if}
+							{#if room.sold_out}
+								<span class="ribbon">Sold out</span>
+							{:else if room.next}
+								<span class="ribbon marathon">Marathon</span>
+							{/if}
 						</a>
 						<div class="card-body">
 							<p class="room-name">{room.name}</p>
 							<h3><a href="/film/{room.item.id}">{room.item.name}</a></h3>
+							{#if room.item.franchise}<p class="franchise">{franchiseLine(room.item.franchise)}</p>{/if}
 							<p class="card-meta">{meta(room)}</p>
 							<p class="genres">{room.item.genres.slice(0, 3).join(' · ')}</p>
 							<Showtimes date={programme.date} times={room.showtimes} href="/tickets/{room.number}" />
+							{#if room.next}
+								<a class="next" href="/tickets/{room.number}?next=1">
+									<img src={imageUrl(room.next.id, 'Primary', room.next.poster_tag, 120)} alt="" loading="lazy" />
+									<span class="next-text">
+										<small>Up next here</small>
+										<strong>{room.next.name}</strong>
+										{#if room.next.franchise?.part}<small>Part {room.next.franchise.part} of {room.next.franchise.parts}</small>{/if}
+									</span>
+									<span class="next-go" aria-hidden="true">▶</span>
+								</a>
+							{/if}
 						</div>
 					{:else}
 						<div class="poster empty"><span class="badge">{room.number}</span><span>Closed</span></div>
@@ -388,6 +408,71 @@
 		font-family: var(--display);
 		font-weight: 700;
 		font-size: 1.15rem;
+	}
+	.franchise {
+		margin: 0;
+		color: var(--gold);
+		font-size: 0.8rem;
+		font-weight: 600;
+		letter-spacing: 0.02em;
+	}
+	.hero-content .franchise {
+		margin-top: -0.2rem;
+		font-size: 0.95rem;
+		text-shadow: 0 0.1rem 0.6rem rgb(0 0 0 / 0.6);
+	}
+	.ribbon.marathon {
+		background: var(--gold);
+		color: #1a1206;
+	}
+	.next {
+		display: grid;
+		grid-template-columns: 2.6rem 1fr auto;
+		gap: 0.7rem;
+		align-items: center;
+		margin-top: 0.6rem;
+		padding: 0.45rem 0.7rem 0.45rem 0.45rem;
+		border-radius: 0.6rem;
+		text-decoration: none;
+		background: linear-gradient(90deg, rgb(255 181 71 / 0.16), rgb(255 181 71 / 0.04));
+		border: 1px solid rgb(255 181 71 / 0.35);
+		transition: border-color 0.15s, transform 0.15s;
+	}
+	.next:hover {
+		border-color: var(--gold);
+		transform: translateY(-1px);
+	}
+	.next img {
+		width: 2.6rem;
+		aspect-ratio: 2 / 3;
+		object-fit: cover;
+		border-radius: 0.3rem;
+	}
+	.next-text {
+		display: flex;
+		flex-direction: column;
+		min-width: 0;
+		line-height: 1.25;
+	}
+	.next-text small {
+		color: var(--muted);
+		font-size: 0.7rem;
+	}
+	.next-text small:first-child {
+		color: var(--gold);
+		text-transform: uppercase;
+		letter-spacing: 0.12em;
+		font-weight: 600;
+	}
+	.next-text strong {
+		font-size: 0.9rem;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.next-go {
+		color: var(--gold);
+		font-size: 0.8rem;
 	}
 	.ribbon {
 		position: absolute;

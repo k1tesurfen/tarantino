@@ -12,9 +12,11 @@ export function marqueeLines(rooms: CinemaRoom[]): string[] {
 		.map((bill) => bill.map((r) => r.item?.name).filter(Boolean).join(' & '))
 		.filter(Boolean);
 	const serials = rooms.filter((r) => r.kind === 'series' && r.item).length;
+	const marathons = rooms.flatMap((r) => (r.next?.franchise ? [`${r.next.franchise.name} marathon`] : []));
 	return [
 		'Tonight · double features',
 		...bills,
+		...marathons,
 		...(serials ? [`+ ${serials} serials in the lounge`] : [])
 	];
 }

@@ -97,8 +97,11 @@ class ProgrammeEntry(Base):
     room_id: Mapped[int] = mapped_column(ForeignKey("room.id", ondelete="CASCADE"))
     item_id: Mapped[str | None] = mapped_column(String(32))  # None: room closed today
     showtimes: Mapped[list] = mapped_column(JSON, default=list)
-    source: Mapped[str] = mapped_column(String(16))  # "generated" | "override"
+    source: Mapped[str] = mapped_column(String(16))  # "generated" | "franchise" | "override"
     first_started_at: Mapped[datetime | None] = mapped_column(DateTime)
+    # Same-day franchise marathon: later parts started in this room after `item_id`, in order.
+    marathon: Mapped[list] = mapped_column(JSON, default=list)
+    last_started_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime)
 
 
@@ -116,13 +119,14 @@ class SeriesAssignment(Base):
 
 
 class Cassette(Base):
-    """An RFID-tagged VHS cassette, bound to a room by learn mode; part of the config export."""
+    """An RFID-tagged VHS cassette, bound to a room (or the franchise run) by learn mode; part of the config export."""
 
     __tablename__ = "cassette"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     uid: Mapped[str] = mapped_column(String(32), unique=True)  # normalised: uppercase, no separators
-    room_id: Mapped[int] = mapped_column(ForeignKey("room.id", ondelete="CASCADE"), index=True)
+    target: Mapped[str] = mapped_column(String(16), default="room")  # "room" | "franchise"
+    room_id: Mapped[int | None] = mapped_column(ForeignKey("room.id", ondelete="CASCADE"), index=True)
     learned_at: Mapped[datetime] = mapped_column(DateTime)
 
 
@@ -139,3 +143,43 @@ class VhsEvent(Base):
     message: Mapped[str | None] = mapped_column(String)
     show_id: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+
+
+class Franchise(Base):
+    """Admin overrides for a franchise (a TMDb collection); part of the config export.
+
+    Franchises themselves come from the library; a row only exists once something was changed.
+    Parts are referenced by key: the TMDb movie id, or "item:<jellyfin id>" without one.
+    """
+
+    __tablename__ = "franchise"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    collection_id: Mapped[str] = mapped_column(String(32), unique=True)  # TMDb collection id
+    name: Mapped[str | None] = mapped_column(String)
+    any_order: Mapped[bool] = mapped_column(Boolean, default=False)
+    order: Mapped[list] = mapped_column(JSON, default=list)  # part keys; empty: by premiere date
+    excluded: Mapped[list] = mapped_column(JSON, default=list)  # part keys that behave as standalones
+
+
+class FranchiseRun(Base):
+    """Tarantino's own progress through a franchise (independent of Jellyfin's watched state)."""
+
+    __tablename__ = "franchise_run"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    collection_id: Mapped[str] = mapped_column(String(32), unique=True)
+    started_parts: Mapped[list] = mapped_column(JSON, default=list)  # part keys started in this run
+    started_at: Mapped[datetime] = mapped_column(DateTime)
+    last_advanced_at: Mapped[datetime] = mapped_column(DateTime)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime)  # the finale started; resting since
+
+
+class LibraryCollection(Base):
+    """Jellyfin collection (BoxSet) names by TMDb collection id; default franchise names. Rebuilt by the sync."""
+
+    __tablename__ = "library_collection"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)  # TMDb collection id
+    name: Mapped[str] = mapped_column(String)
+    synced_at: Mapped[datetime] = mapped_column(DateTime)

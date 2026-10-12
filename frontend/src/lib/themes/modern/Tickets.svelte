@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { imageUrl } from '$lib/api';
-	import { formatCinemaDate, formatRuntime } from '$lib/cinema/api';
+	import { formatCinemaDate, formatRuntime, franchiseLine, type CinemaItem } from '$lib/cinema/api';
 	import { cinema } from '$lib/cinema/state.svelte';
 	import {
 		AISLES_AFTER,
@@ -12,11 +12,13 @@
 		ticketTime
 	} from '$lib/cinema/tickets';
 
-	let { room: roomNumber }: { room: number } = $props();
+	let { room: roomNumber, next = false }: { room: number; next?: boolean } = $props();
 
 	const programme = $derived(cinema.programme);
 	const room = $derived(programme?.rooms.find((r) => r.number === roomNumber));
-	const item = $derived(room?.item);
+	/** Once the show starts, the room moves on (the next part becomes its title): keep showing this one. */
+	let frozen = $state<CinemaItem | null>(null);
+	const item = $derived(frozen ?? (next ? room?.next : room?.item));
 
 	const booked = $derived(programme && room ? bookedSeats(programme.date, room) : new Set<string>());
 
@@ -36,10 +38,12 @@
 	async function startShow() {
 		starting = true;
 		error = null;
+		frozen = item ?? null;
 		try {
-			await cinema.play(roomNumber);
+			await cinema.play(roomNumber, next);
 		} catch (e) {
 			error = (e as Error).message;
+			frozen = null;
 		} finally {
 			starting = false;
 		}
@@ -52,6 +56,12 @@
 
 {#if !programme}
 	<p class="loading">Opening the box office…</p>
+{:else if room && next && !item}
+	<div class="empty">
+		<h1>No next part</h1>
+		<p>{room.name} has no follow-up to offer right now.</p>
+		<a class="btn" href="/tickets/{room.number}">Tickets for {room.item?.name ?? room.name}</a>
+	</div>
 {:else if !room || !item}
 	<div class="empty">
 		<h1>No screening</h1>
@@ -63,8 +73,11 @@
 		<aside class="summary">
 			<img src={imageUrl(item.id, 'Primary', item.poster_tag, 400)} alt="" />
 			<div>
-				<p class="eyebrow">{room.kind === 'movie' ? 'Auditorium' : 'Lounge'} {room.number} · {room.name}</p>
+				<p class="eyebrow">
+					{next ? 'Next in auditorium' : room.kind === 'movie' ? 'Auditorium' : 'Lounge'} {room.number} · {room.name}
+				</p>
 				<h1>{item.name}</h1>
+				{#if item.franchise}<p class="franchise">{franchiseLine(item.franchise)}</p>{/if}
 				<p class="muted">{[item.year, formatRuntime(item.runtime_minutes), item.official_rating].filter(Boolean).join(' · ')}</p>
 				<p class="muted">{formatCinemaDate(programme.date)} · {showtime}</p>
 			</div>
@@ -73,7 +86,9 @@
 		{#if step === 'seats'}
 			<section class="seating">
 				<ol class="steps"><li class="active">1 · Seats</li><li>2 · Ticket</li></ol>
-				{#if room.sold_out}
+				{#if next}
+					<p class="notice">The marathon continues: same auditorium, same seats if you like.</p>
+				{:else if room.sold_out}
 					<p class="notice">Sold out — but the house always keeps one seat for you.</p>
 				{/if}
 				<div class="screen">Screen</div>
@@ -132,7 +147,7 @@
 				<div class="footer">
 					<button class="btn" onclick={() => (step = 'seats')}>Change seats</button>
 					<button class="btn primary big" disabled={starting} onclick={startShow}>
-						{starting ? 'Starting…' : room.kind === 'movie' ? 'Start the show' : 'Start next episode'}
+						{starting ? 'Starting…' : next ? 'Start the next part' : room.kind === 'movie' ? 'Start the show' : 'Start next episode'}
 					</button>
 				</div>
 				{#if error}<p class="error">{error}</p>{/if}
@@ -180,6 +195,12 @@
 		font-size: 2rem;
 		line-height: 1;
 		margin: 0.4rem 0;
+	}
+	.franchise {
+		margin: 0;
+		color: var(--gold);
+		font-size: 0.85rem;
+		font-weight: 600;
 	}
 	.muted {
 		color: var(--muted);

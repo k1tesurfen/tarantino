@@ -11,12 +11,12 @@ from pydantic import BaseModel, Field
 from tarantino.programme.rules import MovieFilters, Weights
 from tarantino.settings import AppSettings
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 # Every database table must be listed exactly once (enforced by a test):
-CONFIG_TABLES = {"setting", "room", "cassette"}  # always exported
-STATE_TABLES = {"series_assignment", "programme_entry"}  # exported unless state is excluded
-REBUILDABLE_TABLES = {"library_item", "show", "vhs_event", "alembic_version"}  # cache and logs, never exported
+CONFIG_TABLES = {"setting", "room", "cassette", "franchise"}  # always exported
+STATE_TABLES = {"series_assignment", "programme_entry", "franchise_run"}  # exported unless state is excluded
+REBUILDABLE_TABLES = {"library_item", "library_collection", "show", "vhs_event", "alembic_version"}  # never exported
 
 
 class ItemRef(BaseModel):
@@ -40,8 +40,27 @@ class RoomExport(BaseModel):
 
 class CassetteExport(BaseModel):
     uid: str
-    room_number: int
+    target: Literal["room", "franchise"] = "room"
+    room_number: int | None = None  # None for the franchise cassette
     learned_at: datetime
+
+
+class FranchiseExport(BaseModel):
+    """Admin overrides of a franchise (TMDb collection); parts as title references."""
+
+    collection_id: str
+    name: str | None = None
+    any_order: bool = False
+    order: list[ItemRef] = Field(default_factory=list)
+    excluded: list[ItemRef] = Field(default_factory=list)
+
+
+class FranchiseRunExport(BaseModel):
+    collection_id: str
+    started_parts: list[ItemRef] = Field(default_factory=list)
+    started_at: datetime
+    last_advanced_at: datetime
+    finished_at: datetime | None = None
 
 
 class SeriesAssignmentExport(BaseModel):
@@ -57,14 +76,17 @@ class ProgrammeEntryExport(BaseModel):
     room_number: int
     item: ItemRef | None
     showtimes: list[str] = Field(default_factory=list)
-    source: Literal["generated", "override"] = "generated"
+    source: Literal["generated", "franchise", "override"] = "generated"
     first_started_at: datetime | None = None
+    marathon: list[ItemRef] = Field(default_factory=list)
+    last_started_at: datetime | None = None
     created_at: datetime
 
 
 class StateExport(BaseModel):
     series_assignments: list[SeriesAssignmentExport] = Field(default_factory=list)
     programme: list[ProgrammeEntryExport] = Field(default_factory=list)
+    franchise_runs: list[FranchiseRunExport] = Field(default_factory=list)
 
 
 class ConfigExport(BaseModel):
@@ -75,6 +97,7 @@ class ConfigExport(BaseModel):
     settings: AppSettings
     rooms: list[RoomExport]
     cassettes: list[CassetteExport] = Field(default_factory=list)
+    franchises: list[FranchiseExport] = Field(default_factory=list)
     state: StateExport | None = None
 
 
@@ -96,4 +119,13 @@ def _v1_to_v2(document: dict) -> dict:
     return document | {"cassettes": []}  # cassettes were added in schema 2
 
 
-MIGRATIONS: dict = {1: _v1_to_v2}  # {from_version: callable(document) -> document}
+def _v2_to_v3(document: dict) -> dict:
+    # Schema 3 added franchises, franchise runs, the franchise cassette and same-day marathons.
+    cassettes = [c | {"target": "room"} for c in document.get("cassettes", [])]
+    state = document.get("state")
+    if state is not None:
+        state = state | {"franchise_runs": []}
+    return document | {"cassettes": cassettes, "franchises": [], "state": state}
+
+
+MIGRATIONS: dict = {1: _v1_to_v2, 2: _v2_to_v3}  # {from_version: callable(document) -> document}

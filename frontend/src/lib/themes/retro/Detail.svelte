@@ -6,6 +6,7 @@
 	import TrailerModal from '../modern/TrailerModal.svelte';
 	import BulbFrame from './BulbFrame.svelte';
 	import LetterBoard from './LetterBoard.svelte';
+	import { chapterLine } from './chapter';
 
 	let { title }: { title: TitleDetail } = $props();
 
@@ -21,7 +22,7 @@
 		if (!screening) return;
 		error = null;
 		try {
-			await cinema.play(screening.room);
+			await cinema.play(screening.room, screening.next);
 		} catch (e) {
 			error = (e as Error).message;
 		}
@@ -49,12 +50,13 @@
 	<div class="info">
 		<p class="kicker">
 			{#if screening}
-				{isSeries ? 'Serial' : 'Now playing'} · {isSeries ? 'Lounge' : 'Auditorium'} {screening.room}
+				{isSeries ? 'Serial' : screening.next ? 'Held over, up next' : 'Now playing'} · {isSeries ? 'Lounge' : 'Auditorium'} {screening.room}
 			{:else}
 				Not on tonight's bill
 			{/if}
 		</p>
 		<LetterBoard lines={[title.name]} />
+		{#if title.franchise}<p class="chapter neon pink">{chapterLine(title.franchise)}</p>{/if}
 		{#if title.tagline}<p class="tagline neon">“{title.tagline}”</p>{/if}
 
 		<div class="facts">
@@ -77,14 +79,16 @@
 
 		{#if screening}
 			<div class="box-office">
-				<p class="shows">
-					{#each showtimeChips(cinema.programme?.date ?? '', screening.showtimes) as chip}
-						<span class="tile {chip.state}">{chip.label}</span>
-					{/each}
-					{#if screening.sold_out}<span class="sold">Sold out</span>{/if}
-				</p>
+				{#if !screening.next}
+					<p class="shows">
+						{#each showtimeChips(cinema.programme?.date ?? '', screening.showtimes) as chip}
+							<span class="tile {chip.state}">{chip.label}</span>
+						{/each}
+						{#if screening.sold_out}<span class="sold">Sold out</span>{/if}
+					</p>
+				{/if}
 				<div class="actions">
-					<a class="admit" href="/tickets/{screening.room}">Admit one</a>
+					<a class="admit" href="/tickets/{screening.room}{screening.next ? '?next=1' : ''}">Admit one</a>
 					<button class="sneak" onclick={playNow}>{isSeries ? 'Roll the next chapter' : 'Sneak in · play now'}</button>
 				</div>
 				{#if error}<p class="error">{error}</p>{/if}
@@ -169,6 +173,11 @@
 		text-transform: uppercase;
 		letter-spacing: 0.2em;
 		color: var(--gold);
+	}
+	.chapter {
+		margin: 0.6rem 0 0;
+		font-size: 1.6rem;
+		line-height: 1.1;
 	}
 	.tagline {
 		margin: 1.25rem 0;

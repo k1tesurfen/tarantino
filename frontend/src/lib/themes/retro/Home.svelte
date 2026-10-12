@@ -6,6 +6,7 @@
 	import Apple from './Apple.svelte';
 	import BulbFrame from './BulbFrame.svelte';
 	import { doubleBills } from './bills';
+	import { chapterLine } from './chapter';
 
 	const BILL_LINES = [
 		'Two features. One ticket. No refunds.',
@@ -32,7 +33,11 @@
 				{#if room.item}
 					<a class="poster" href="/film/{room.item.id}">
 						<img src={imageUrl(room.item.id, 'Primary', room.item.poster_tag, 500)} alt={room.item.name} loading="lazy" />
-						{#if room.sold_out}<span class="sold">Sold out</span>{/if}
+						{#if room.sold_out}
+							<span class="sold">Sold out</span>
+						{:else if room.next}
+							<span class="sold marathon">Marathon</span>
+						{/if}
 					</a>
 				{:else}
 					<div class="poster missing">
@@ -45,6 +50,7 @@
 		<div class="info">
 			<p class="room">Auditorium {room.number} · {room.name}</p>
 			{#if room.item}
+				{#if room.item.franchise}<p class="chapter neon pink">{chapterLine(room.item.franchise)}</p>{/if}
 				<h3><a href="/film/{room.item.id}">{room.item.name}</a></h3>
 				<p class="facts">{facts(room)}</p>
 				<p class="shows">
@@ -53,6 +59,13 @@
 					{/each}
 				</p>
 				<a class="admit" href="/tickets/{room.number}">Admit one</a>
+				{#if room.next}
+					<a class="held-over" href="/tickets/{room.number}?next=1">
+						<span class="ho-sign">Held over · the next reel</span>
+						<span class="ho-title">{room.next.name}</span>
+						{#if room.next.franchise}<span class="ho-chapter">{chapterLine(room.next.franchise)} ▸</span>{/if}
+					</a>
+				{/if}
 			{:else}
 				<h3>Dark tonight</h3>
 			{/if}
@@ -232,6 +245,59 @@
 		letter-spacing: 0.15em;
 		padding: 0.3rem 0;
 		box-shadow: 0 0 1rem rgb(255 58 76 / 0.6);
+	}
+	.sold.marathon {
+		background: var(--gold-light);
+		color: #121010;
+		box-shadow: 0 0 1rem rgb(255 227 154 / 0.7);
+	}
+	.chapter {
+		margin: 0;
+		font-size: 1.45rem;
+		line-height: 1.1;
+	}
+	/* The marathon continues: a little letter board under the bill. */
+	.held-over {
+		display: flex;
+		flex-direction: column;
+		gap: 0.2rem;
+		align-self: stretch;
+		margin-top: 0.6rem;
+		padding: 0.55rem 0.8rem;
+		text-decoration: none;
+		background: #0d0b0c;
+		border: 2px solid rgb(231 183 90 / 0.55);
+		box-shadow:
+			inset 0 0 1rem rgb(0 0 0 / 0.8),
+			0 0 1rem rgb(231 183 90 / 0.25);
+		transition: box-shadow 0.2s;
+	}
+	.held-over:hover {
+		box-shadow:
+			inset 0 0 1rem rgb(0 0 0 / 0.8),
+			0 0 1.6rem rgb(255 227 154 / 0.6);
+	}
+	.ho-sign {
+		font-family: var(--condensed);
+		text-transform: uppercase;
+		letter-spacing: 0.2em;
+		font-size: 0.7rem;
+		color: var(--gold);
+	}
+	.ho-title {
+		font-family: var(--condensed);
+		font-weight: 700;
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+		color: var(--cream);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.ho-chapter {
+		font-size: 0.8rem;
+		color: var(--gold-light);
+		font-style: italic;
 	}
 	.info {
 		display: flex;

@@ -89,8 +89,8 @@ class CinemaState {
 		}
 	}
 
-	async play(room: number): Promise<Show> {
-		const started = await playRoom(room);
+	async play(room: number, next = false): Promise<Show> {
+		const started = await playRoom(room, next);
 		this.show = this.#latest.get(started.id) ?? started;
 		return this.show;
 	}

@@ -87,6 +87,14 @@
 		<div class="body">
 			<small class="muted">{room.number} · {room.name}</small>
 			<strong>{room.item ? room.item.name : 'Closed today'}</strong>
+			{#if room.item?.franchise}
+				<small class="franchise">
+					{room.item.franchise.name}{room.item.franchise.part
+						? ` · part ${room.item.franchise.part} of ${room.item.franchise.parts}`
+						: ''}
+				</small>
+			{/if}
+			{#if room.next}<small class="franchise">Next: {room.next.name}</small>{/if}
 			{#if room.item}
 				<small class="muted">
 					{room.item.year ?? ''}
@@ -97,12 +105,17 @@
 			{/if}
 			<div class="badges">
 				{#if room.sold_out}<span class="badge sold">sold out</span>{/if}
+				{#if room.next}<span class="badge marathon">marathon{room.marathon ? ` · ${room.marathon + 1} parts` : ''}</span>{/if}
 				{#if room.sticky}<span class="badge sticky">sticky</span>{/if}
 				{#if room.source === 'override'}<span class="badge">override</span>{/if}
+				{#if room.source === 'franchise'}<span class="badge marathon">continued</span>{/if}
 			</div>
 			<div class="actions">
 				{#if room.item}
 					<button onclick={() => act(() => playRoom(room.number), `Starting ${room.item?.name}…`)}>Play</button>
+				{/if}
+				{#if room.next}
+					<button onclick={() => act(() => playRoom(room.number, true), `Starting ${room.next?.name}…`)}>Play next</button>
 				{/if}
 				<button class="ghost" onclick={() => act(() => rerollRoom(room.number))}>Re-roll</button>
 				<button class="ghost" onclick={() => openSwap(room)}>Swap</button>
@@ -208,6 +221,16 @@
 	.badge.sticky {
 		border-color: var(--accent);
 		color: var(--accent);
+	}
+	.badge.marathon {
+		border-color: #4f8fb0;
+		color: #8fd0ef;
+	}
+	.franchise {
+		color: #8fd0ef;
+	}
+	.badges {
+		flex-wrap: wrap;
 	}
 	.actions {
 		display: flex;

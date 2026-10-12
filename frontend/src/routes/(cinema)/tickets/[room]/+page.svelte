@@ -5,6 +5,7 @@
 
 	const theme = $derived(themeFor(cinema.theme));
 	const room = $derived(Number(page.params.room));
+	const next = $derived(page.url.searchParams.has('next'));
 </script>
 
-<theme.Tickets {room} />
+<theme.Tickets {room} {next} />

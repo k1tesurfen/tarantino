@@ -3,7 +3,7 @@
 import re
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Path
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 
 from tarantino import status
 from tarantino.models import LibraryItem
@@ -35,13 +35,14 @@ def _cinema_info(services: Services) -> dict:
     }
 
 
+def _public_item(item: dict | None) -> dict | None:
+    if item is None:
+        return None
+    return {k: v for k, v in item.items() if k != "trailer_urls"} | {"trailers": youtube_ids(item["trailer_urls"])}
+
+
 def _public_room(room: dict) -> dict:
-    item = room["item"]
-    if item:
-        item = {k: v for k, v in item.items() if k != "trailer_urls"} | {
-            "trailers": youtube_ids(item["trailer_urls"])
-        }
-    return room | {"item": item}
+    return room | {"item": _public_item(room["item"]), "next": _public_item(room["next"])}
 
 
 @router.get("/programme")
@@ -62,9 +63,10 @@ def title(services: ServicesDep, item_id: ItemId) -> dict:
     if item is None:
         raise HTTPException(status_code=404, detail="Unknown title")
     screenings = [
-        {"room": r["number"], "name": r["name"], "showtimes": r["showtimes"], "sold_out": r["sold_out"]}
+        {"room": r["number"], "name": r["name"], "showtimes": r["showtimes"], "sold_out": r["sold_out"], "next": is_next}
         for r in services.programme.day_view()["rooms"]
-        if r["item"] and r["item"]["id"] == item_id
+        for is_next, offered in ((False, r["item"]), (True, r["next"]))
+        if offered and offered["id"] == item_id
     ]
     return {
         "id": item.id,
@@ -88,14 +90,17 @@ def title(services: ServicesDep, item_id: ItemId) -> dict:
         "backdrop_tag": item.image_tags.get("Backdrop"),
         "logo_tag": item.image_tags.get("Logo"),
         "trailers": youtube_ids(item.trailer_urls),
+        "franchise": services.programme.franchise_badge(item.id),
         "screenings": screenings,
     }
 
 
 @router.post("/rooms/{number}/play", status_code=202)
-async def play(services: ServicesDep, number: int) -> dict:
+async def play(
+    services: ServicesDep, number: int, next: Annotated[bool, Query(description="The next franchise part.")] = False
+) -> dict:
     try:
-        show_id = await services.start_room(number, trigger="cinema")
+        show_id = await services.start_room(number, trigger="cinema", part="next" if next else "current")
     except ProgrammeError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
     return services.shows.get_show(show_id)

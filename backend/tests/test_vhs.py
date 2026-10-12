@@ -108,7 +108,7 @@ def test_removing_a_room_removes_its_cassettes(client):
 def test_cassettes_survive_export_and_import(client):
     client.put("/api/admin/cassettes/FAKE0002", json={"room": 2})
     document = client.get("/api/admin/config/export").json()
-    assert document["cassettes"][0] | {"learned_at": None} == {"uid": "FAKE0002", "room_number": 2, "learned_at": None}
+    assert document["cassettes"][0] | {"learned_at": None} == {"uid": "FAKE0002", "target": "room", "room_number": 2, "learned_at": None}
     client.delete("/api/admin/cassettes/FAKE0002")
     client.put("/api/admin/cassettes/FAKE0004", json={"room": 4})
     preview = client.post("/api/admin/config/import/preview", json=document).json()

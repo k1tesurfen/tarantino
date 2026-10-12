@@ -87,9 +87,9 @@ class FakeJellyfin:
         if path == "/Items":
             start = int(request.url.params["startIndex"])
             limit = int(request.url.params["limit"])
-            return httpx.Response(
-                200, json={"Items": self.items[start : start + limit], "TotalRecordCount": len(self.items)}
-            )
+            types = request.url.params["includeItemTypes"].split(",")
+            items = [i for i in self.items if i["Type"] in types]
+            return httpx.Response(200, json={"Items": items[start : start + limit], "TotalRecordCount": len(items)})
         if path == "/Sessions":
             if self.activity_after_polls is not None:
                 self.activity_after_polls -= 1

@@ -29,6 +29,8 @@ tarantino cassettes                               # rooms and their cassettes
 tarantino learn 3                                 # arm learn mode, then insert the real cassette
 tarantino learn 3 --uid FAKE0003                  # bind a made-up UID (testing without the recorder)
 tarantino play 3                                  # insert room 3's cassette via the real VHS endpoint
+tarantino learn franchise                         # learn the franchise cassette (also with --uid)
+tarantino play franchise                          # insert the franchise cassette
 tarantino vhs insert 04A1B2C3                     # insert any UID, exactly as the recorder would
 tarantino vhs eject
 tarantino backup
@@ -58,10 +60,19 @@ There is no login, so it only works on the LAN.
 
 | Request | Effect |
 |---|---|
-| `POST /api/vhs/insert {"uid": "04A1B2C3"}` | Starts today's title of the cassette's room. In learn mode it binds the cassette instead and nothing plays. Unknown cassettes are logged and ignored. |
+| `POST /api/vhs/insert {"uid": "04A1B2C3"}` | Starts what the cassette's room offers today (during a franchise marathon: the next part). The franchise cassette starts the next part of the franchise started most recently today. In learn mode it binds the cassette instead and nothing plays. Unknown cassettes are logged and ignored. |
 | `POST /api/vhs/eject {"uid": "04A1B2C3"}` | Only logged. The film keeps playing. `uid` is optional. |
 
-UIDs are normalised: case, spaces, `:` and `-` don't matter. The response is the logged event, and its `outcome` is `played`, `learned`, `unknown` or `ignored`. If the room can't play (closed today, Jellyfin not configured), the response is `409` with a `detail` message. If the same cassette is read again within 10 seconds of starting a show, the second read is ignored, so a show is never restarted by accident.
+UIDs are normalised: case, spaces, `:` and `-` don't matter. The response is the logged event, and its `outcome` is `played`, `learned`, `unknown` or `ignored`. If the room can't play (closed today, Jellyfin not configured), the response is `409` with a `detail` message. The reader fires several times per cassette (on insert and on eject), so reads of the cassette that started the latest cassette show are ignored until a different learned cassette is read or the cinema day rolls over. To play the same room twice in a row, use the website.
+
+## Franchises
+
+Movies of a TMDb collection (two or more distinct films in the library) are a franchise and play in order: only the next part can be programmed, in any room whose filters accept it. tarantino keeps its own progress per franchise (admin → *Franchises*), independent of Jellyfin's watched state:
+
+- Starting a part (website or cassette) moves the franchise on. That room then offers **Next: part N+1** for the rest of the cinema day instead of selling out, so a marathon alternates room cassette → franchise cassette → room cassette …
+- On later days, each franchise you are in the middle of continues at the daily chance from *Settings* (default 70 %), in a random free auditorium that accepts it.
+- Starting the last part finishes the franchise; it rests for 60 days. A franchise with no new part for 180 days starts over at part 1.
+- On the *Franchises* page you can rename a franchise, reorder or exclude parts (e.g. a spin-off), switch the order off ("any order"), start over, or pick the next part.
 
 ## What happens when…
 

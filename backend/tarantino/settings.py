@@ -27,6 +27,16 @@ class AppSettings(BaseModel):
         7, ge=0, le=365, description="Days before a non-sticky series may be offered again."
     )
 
+    franchise_continue_chance: int = Field(
+        70, ge=0, le=100, description="Daily chance (%) that a started franchise continues with its next part."
+    )
+    franchise_rest_days: int = Field(
+        60, ge=0, le=3650, description="Days a franchise rests after its finale before it may start again."
+    )
+    franchise_stall_days: int = Field(
+        180, ge=1, le=3650, description="A started franchise with no new part for this many days starts over."
+    )
+
     theme_modern_name: str = Field("apLex", min_length=1, max_length=40, description="Name of the modern cinema.")
     theme_retro_name: str = Field(
         "Red Apple Cinema", min_length=1, max_length=40, description="Name of the retro cinema."

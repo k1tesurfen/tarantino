@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { imageUrl } from '$lib/api';
-	import { formatRuntime, trailerEmbedUrl, type TitleDetail } from '$lib/cinema/api';
+	import { formatRuntime, franchiseLine, trailerEmbedUrl, type TitleDetail } from '$lib/cinema/api';
 	import { cinema } from '$lib/cinema/state.svelte';
 	import Showtimes from './Showtimes.svelte';
 
@@ -18,7 +18,7 @@
 		if (!screening) return;
 		error = null;
 		try {
-			await cinema.play(screening.room);
+			await cinema.play(screening.room, screening.next);
 		} catch (e) {
 			error = (e as Error).message;
 		}
@@ -44,6 +44,7 @@
 
 		<div class="info">
 			<a class="back" href="/">← Today's programme</a>
+			{#if title.franchise}<p class="franchise">{franchiseLine(title.franchise)}</p>{/if}
 			<h1>{title.name}</h1>
 			{#if title.original_title && title.original_title !== title.name}
 				<p class="original">{title.original_title}</p>
@@ -65,14 +66,14 @@
 			<section class="tickets">
 				{#if screening}
 					<p class="where">
-						Today in {isSeries ? 'Lounge' : 'Auditorium'} {screening.room} · {screening.name}
-						{#if screening.sold_out}<span class="sold">Sold out</span>{/if}
+						{screening.next ? 'Up next' : 'Today'} in {isSeries ? 'Lounge' : 'Auditorium'} {screening.room} · {screening.name}
+						{#if screening.sold_out && !screening.next}<span class="sold">Sold out</span>{/if}
 					</p>
-					{#if cinema.programme}
+					{#if cinema.programme && !screening.next}
 						<Showtimes date={cinema.programme.date} times={screening.showtimes} href="/tickets/{screening.room}" />
 					{/if}
 					<div class="actions">
-						<a class="btn primary" href="/tickets/{screening.room}">Get tickets</a>
+						<a class="btn primary" href="/tickets/{screening.room}{screening.next ? '?next=1' : ''}">Get tickets</a>
 						<button class="btn" onclick={playNow}>{isSeries ? 'Play next episode' : 'Skip the queue · play now'}</button>
 					</div>
 					{#if error}<p class="error">{error}</p>{/if}
@@ -204,6 +205,12 @@
 	}
 	.genres {
 		color: var(--muted);
+	}
+	.franchise {
+		margin: 0.6rem 0 -0.2rem;
+		color: var(--gold);
+		font-weight: 600;
+		letter-spacing: 0.04em;
 	}
 	.tagline {
 		font-size: 1.15rem;

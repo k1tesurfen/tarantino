@@ -85,6 +85,26 @@
 		</fieldset>
 
 		<fieldset>
+			<legend>Franchises</legend>
+			<label>
+				Daily chance that a started franchise continues (%)
+				<input type="number" min="0" max="100" bind:value={form.franchise_continue_chance} />
+				<small class="muted">
+					Rolled every cinema day for each franchise you are in the middle of. On a hit, its next part opens in a
+					free auditorium whose rules accept it.
+				</small>
+			</label>
+			<label>
+				Rest after the finale (days)
+				<input type="number" min="0" max="3650" bind:value={form.franchise_rest_days} />
+			</label>
+			<label>
+				Start over after no new part for (days)
+				<input type="number" min="1" max="3650" bind:value={form.franchise_stall_days} />
+			</label>
+		</fieldset>
+
+		<fieldset>
 			<legend>Projector</legend>
 			<label>Address (IP or hostname) <input bind:value={form.projector_address} placeholder="e.g. 192.0.2.50" /></label>
 			<label>

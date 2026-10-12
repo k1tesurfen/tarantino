@@ -52,7 +52,8 @@ def test_sync_paginates(tmp_path, monkeypatch):
     fake = FakeJellyfin([movie(n) for n in range(1, 11)])
     sync = make_sync(tmp_path, fake)
     assert asyncio.run(sync.run()).movies == 10
-    assert sum(r.url.path == "/Items" for r in fake.requests) == 4
+    item_pages = [r for r in fake.requests if r.url.path == "/Items" and "BoxSet" not in r.url.params["includeItemTypes"]]
+    assert len(item_pages) == 4
 
 
 def test_sync_updates_and_removes(tmp_path):

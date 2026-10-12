@@ -76,7 +76,8 @@
 			p.rooms_added.length +
 			p.rooms_changed.length +
 			p.rooms_removed.length +
-			p.cassettes_changed.length >
+			p.cassettes_changed.length +
+			p.franchises_changed.length >
 			0 ||
 		p.state_included;
 
@@ -132,10 +133,17 @@
 				{#each p.cassettes_changed as change}<li>{change}</li>{/each}
 			</ul>
 		{/if}
+		{#if p.franchises_changed.length}
+			<h4>Franchises</h4>
+			<ul>
+				{#each p.franchises_changed as name}<li>~ {name}</li>{/each}
+			</ul>
+		{/if}
 		{#if p.state_included}
 			<h4>State</h4>
 			<p>
-				Replaces sticky series ({p.series_assignments}) and programme history ({p.programme_entries} entries).
+				Replaces sticky series ({p.series_assignments}), programme history ({p.programme_entries} entries) and
+				franchise progress ({p.franchise_runs} runs).
 				{#if p.remapped_titles}{p.remapped_titles} titles were matched under a new Jellyfin id.{/if}
 			</p>
 			{#if p.unresolved_titles.length}

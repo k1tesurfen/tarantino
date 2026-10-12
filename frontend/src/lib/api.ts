@@ -53,6 +53,9 @@ export type AppSettings = {
 	rollover_hour: number;
 	movie_cooldown_days: number;
 	series_cooldown_days: number;
+	franchise_continue_chance: number;
+	franchise_rest_days: number;
+	franchise_stall_days: number;
 	theme_modern_name: string;
 	theme_retro_name: string;
 	default_theme: 'modern' | 'retro';
@@ -108,6 +111,7 @@ export type ProgrammeItem = {
 	favorite: boolean;
 	unplayed_count: number | null;
 	trailer_urls: string[];
+	franchise: { name: string; part: number | null; parts: number; ordered: boolean } | null;
 };
 
 export type ProgrammeRoom = {
@@ -115,8 +119,11 @@ export type ProgrammeRoom = {
 	name: string;
 	kind: 'movie' | 'series';
 	item: ProgrammeItem | null;
+	next: ProgrammeItem | null;
+	marathon: number;
 	showtimes: string[];
-	source: 'generated' | 'override' | null;
+	source: 'generated' | 'franchise' | 'override' | null;
+	started: boolean;
 	sold_out: boolean;
 	sticky: boolean;
 };
@@ -191,7 +198,8 @@ export const swapRoom = (room: number, itemId: string) =>
 export const getProgramme = () => request<Programme>('/api/admin/programme');
 export const rerollRoom = (room?: number) => post<Programme>('/api/admin/programme/reroll', { room: room ?? null });
 export const dropSeries = (room: number) => post<Programme>(`/api/admin/rooms/${room}/drop-series`);
-export const playRoom = (room: number) => post<Show>(`/api/admin/rooms/${room}/play`);
+export const playRoom = (room: number, next = false) =>
+	post<Show>(`/api/admin/rooms/${room}/play${next ? '?next=true' : ''}`);
 
 type EventHandlers = { show?: (show: Show) => void; programme?: () => void; vhs?: (update: VhsUpdate) => void };
 
@@ -278,9 +286,11 @@ export type ImportPreview = {
 	rooms_removed: string[];
 	rooms_changed: string[];
 	cassettes_changed: string[];
+	franchises_changed: string[];
 	state_included: boolean;
 	series_assignments: number;
 	programme_entries: number;
+	franchise_runs: number;
 	unresolved_titles: string[];
 	remapped_titles: number;
 	exported_at: string;
@@ -302,7 +312,13 @@ export const restoreBackup = (name: string) =>
 
 // -- cassettes -----------------------------------------------------------
 
-export type LearnState = { room: number; room_name: string; expires_at: string; seconds_left: number };
+export type LearnState = {
+	target: 'room' | 'franchise';
+	room: number | null;
+	room_name: string;
+	expires_at: string;
+	seconds_left: number;
+};
 
 export type VhsEvent = {
 	id: number;
@@ -323,14 +339,69 @@ export type CassetteRoom = {
 	cassettes: { uid: string; learned_at: string }[];
 };
 
-export type CassetteOverview = { rooms: CassetteRoom[]; learn: LearnState | null; events: VhsEvent[] };
+export type Cassette = { uid: string; learned_at: string };
+
+export type CassetteOverview = {
+	rooms: CassetteRoom[];
+	franchise: Cassette[];
+	learn: LearnState | null;
+	events: VhsEvent[];
+};
 
 export type VhsUpdate = { event: VhsEvent | null; learn: LearnState | null };
 
+/** A room number, or 'franchise' for the franchise cassette. */
+export type CassetteTarget = number | 'franchise';
+const targetBody = (target: CassetteTarget) => (target === 'franchise' ? { franchise: true } : { room: target });
+
 export const getCassettes = () => request<CassetteOverview>('/api/admin/cassettes');
-export const armLearnMode = (room: number) => send<LearnState>('POST', '/api/admin/cassettes/learn', { room });
+export const armLearnMode = (target: CassetteTarget) =>
+	send<LearnState>('POST', '/api/admin/cassettes/learn', targetBody(target));
 export const cancelLearnMode = () => send<void>('DELETE', '/api/admin/cassettes/learn');
-export const assignCassette = (uid: string, room: number) =>
-	send<CassetteOverview>('PUT', `/api/admin/cassettes/${encodeURIComponent(uid)}`, { room });
+export const assignCassette = (uid: string, target: CassetteTarget) =>
+	send<CassetteOverview>('PUT', `/api/admin/cassettes/${encodeURIComponent(uid)}`, targetBody(target));
 export const removeCassette = (uid: string) =>
 	send<CassetteOverview>('DELETE', `/api/admin/cassettes/${encodeURIComponent(uid)}`);
+
+// -- franchises ----------------------------------------------------------
+
+export type FranchisePart = {
+	key: string;
+	item_id: string;
+	name: string;
+	year: number | null;
+	premiere_date: string | null;
+	poster_tag: string | null;
+	played: boolean;
+	copies: number;
+	started: boolean;
+	next: boolean;
+	today: number | null;
+};
+
+export type FranchiseState = 'started' | 'resting' | 'fresh' | 'off';
+
+export type Franchise = {
+	collection_id: string;
+	name: string;
+	default_name: string;
+	any_order: boolean;
+	custom_order: boolean;
+	ordered: boolean;
+	state: FranchiseState;
+	progress: number;
+	started_at: string | null;
+	last_advanced_at: string | null;
+	resting_until: string | null;
+	parts: FranchisePart[];
+	excluded: FranchisePart[];
+};
+
+export type FranchiseChanges = { name?: string; any_order?: boolean; order?: string[]; excluded?: string[] };
+
+const franchisePath = (id: string) => `/api/admin/franchises/${encodeURIComponent(id)}`;
+export const getFranchises = () => request<Franchise[]>('/api/admin/franchises');
+export const updateFranchise = (id: string, changes: FranchiseChanges) =>
+	send<Franchise>('PATCH', franchisePath(id), changes);
+export const resetFranchise = (id: string) => send<Franchise>('POST', `${franchisePath(id)}/reset`);
+export const setNextPart = (id: string, key: string) => send<Franchise>('POST', `${franchisePath(id)}/next`, { key });

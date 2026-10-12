@@ -2,6 +2,9 @@ import type { Show } from '$lib/api';
 
 export type ThemeId = 'modern' | 'retro';
 
+/** "Terminator · Part 2 of 6"; `part` is null when the franchise has no order. */
+export type FranchiseBadge = { name: string; part: number | null; parts: number; ordered: boolean };
+
 export type CinemaItem = {
 	id: string;
 	type: 'movie' | 'series';
@@ -20,6 +23,7 @@ export type CinemaItem = {
 	favorite: boolean;
 	unplayed_count: number | null;
 	trailers: string[];
+	franchise: FranchiseBadge | null;
 };
 
 export type CinemaRoom = {
@@ -27,8 +31,12 @@ export type CinemaRoom = {
 	name: string;
 	kind: 'movie' | 'series';
 	item: CinemaItem | null;
+	/** Same-day marathon: the next franchise part, offered once `item` started today. */
+	next: CinemaItem | null;
+	marathon: number;
 	showtimes: string[];
-	source: 'generated' | 'override' | null;
+	source: 'generated' | 'franchise' | 'override' | null;
+	started: boolean;
 	sold_out: boolean;
 	sticky: boolean;
 };
@@ -63,7 +71,8 @@ export type TitleDetail = {
 	backdrop_tag: string | null;
 	logo_tag: string | null;
 	trailers: string[];
-	screenings: { room: number; name: string; showtimes: string[]; sold_out: boolean }[];
+	franchise: FranchiseBadge | null;
+	screenings: { room: number; name: string; showtimes: string[]; sold_out: boolean; next: boolean }[];
 };
 
 export type NowPlaying = { show: Show | null; now_playing: string | null; paused: boolean | null };
@@ -78,8 +87,8 @@ export const getCinemaProgramme = () => get<CinemaProgramme>('/api/cinema/progra
 export const getTitle = (id: string) => get<TitleDetail>(`/api/cinema/titles/${id}`);
 export const getNow = () => get<NowPlaying>('/api/cinema/now');
 
-export async function playRoom(number: number): Promise<Show> {
-	const response = await fetch(`/api/cinema/rooms/${number}/play`, { method: 'POST' });
+export async function playRoom(number: number, next = false): Promise<Show> {
+	const response = await fetch(`/api/cinema/rooms/${number}/play${next ? '?next=true' : ''}`, { method: 'POST' });
 	const body = await response.json().catch(() => null);
 	if (!response.ok) throw new Error(body?.detail ?? `HTTP ${response.status}`);
 	return body;
@@ -102,6 +111,27 @@ export function showtimeStates(cinemaDate: string, times: string[], now = new Da
 		}
 		return 'later';
 	});
+}
+
+const ROMAN: [number, string][] = [
+	[1000, 'M'], [900, 'CM'], [500, 'D'], [400, 'CD'], [100, 'C'], [90, 'XC'],
+	[50, 'L'], [40, 'XL'], [10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I']
+];
+
+export function roman(n: number): string {
+	let out = '';
+	for (const [value, numeral] of ROMAN) {
+		while (n >= value) {
+			out += numeral;
+			n -= value;
+		}
+	}
+	return out;
+}
+
+/** "Terminator · Part 2 of 6" (or just the name when the franchise has no order). */
+export function franchiseLine(badge: FranchiseBadge): string {
+	return badge.part ? `${badge.name} · Part ${badge.part} of ${badge.parts}` : badge.name;
 }
 
 export function formatRuntime(minutes: number | null): string {
