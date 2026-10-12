@@ -292,6 +292,7 @@ Each milestone ends with a test on the mini-PC and a commit to `main`.
 
 **Open checks (as of 2026-10-11):**
 - **M7:** run `tarantino play 3` on the mini-PC; it should start room 3's film on the projector. The test cassette `FAKE0003` is bound to room 3 for this. Remove it on the admin *Cassettes* page afterwards. Learn, unknown inserts and eject were already verified on the mini-PC.
+- **M9** (deployed 2026-10-12): start a franchise part from the website and check that its room offers "Next"; learn a franchise cassette (`tarantino learn franchise`) and alternate it with the room cassette for a short marathon; insert the same cassette twice (second read ignored); over the following days, check that started franchises come back at about the daily chance (admin programme: *continued*). The programme of 2026-10-12 was generated before M9 and may still contain sequels.
 - **M8:** reboot the mini-PC, restart Jellyfin, and start a show with the projector off; each should end with a clear status in admin and on the cinema site. Also confirm `systemctl restart tarantino.service` now finishes within a few seconds with a cinema page open (updated unit installed 2026-10-11).
 
 Export/import lands in M4, together with the admin pages. Cassette management (learn mode, unknown-UID log) moved from M4 to M7, next to the cassette API. From then on, every configuration you build is backed up before every update.
