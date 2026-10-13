@@ -18,6 +18,9 @@ RETRY_SECONDS = 30
 # While a show waits for the remote (right after a wake), retry this often: the service
 # comes back some seconds after the wake, and the first attempt usually comes too early.
 WAITING_RETRY_SECONDS = 2.0
+# A projector in deep standby can accept the TCP connection without starting the remote
+# service, or drop the packets; without a limit one attempt could block for minutes.
+CONNECT_TIMEOUT = 10.0
 
 
 class RemoteError(Exception):
@@ -65,9 +68,12 @@ class RemoteLink:
 
     def _new_remote(self, host: str) -> AndroidTVRemote:
         self.cert_dir.mkdir(parents=True, exist_ok=True)
-        return self.factory(CLIENT_NAME, str(self.cert_dir / "cert.pem"), str(self.cert_dir / "key.pem"), host)
+        remote = self.factory(CLIENT_NAME, str(self.cert_dir / "cert.pem"), str(self.cert_dir / "key.pem"), host)
+        remote.add_is_available_updated_callback(self._on_available)
+        return remote
 
     def _start_connect(self) -> None:
+        self._set_state("connecting")
         self._task = asyncio.create_task(self._connect_loop())
 
     async def _connect_loop(self) -> None:
@@ -76,11 +82,12 @@ class RemoteLink:
         while True:
             self._set_state("connecting")
             try:
-                await remote.async_connect()
+                await asyncio.wait_for(remote.async_connect(), CONNECT_TIMEOUT)
             except InvalidAuth:
                 self._set_state("unpaired", "Pair the projector in the admin page")
                 return
-            except (CannotConnect, ConnectionClosed) as exc:
+            except (CannotConnect, ConnectionClosed, TimeoutError) as exc:
+                remote.disconnect()  # drop a half-open attempt
                 self._set_state("unreachable", str(exc) or "Cannot connect")
                 if self._waiting:  # a show is waiting: keep trying at a short interval
                     await asyncio.sleep(self.waiting_retry_seconds)
@@ -92,12 +99,15 @@ class RemoteLink:
                     pass
                 continue
             self._set_state("connected")
-            remote.add_is_available_updated_callback(self._on_available)
             remote.keep_reconnecting(self._on_invalid_auth)
             log.info("Android TV remote connected to %s", self.host)
             return
 
     def _on_available(self, available: bool) -> None:
+        if available:
+            log.info("Android TV remote reconnected to %s", self.host)
+        else:
+            log.info("Android TV remote lost the connection to %s", self.host)
         self._set_state("connected" if available else "unreachable")
 
     def _on_invalid_auth(self) -> None:
@@ -120,7 +130,13 @@ class RemoteLink:
         if self.state in ("unconfigured", "unpaired", "pairing"):
             return False
         self._waiting += 1
-        self._retry_now.set()
+        if self._task is None or self._task.done():
+            # It was connected before, so the library is reconnecting with a back-off of up
+            # to 30 s. Take over with our own loop, which retries every few seconds.
+            self._remote.disconnect()
+            self._start_connect()
+        else:
+            self._retry_now.set()
         try:
             await asyncio.wait_for(self._connected.wait(), timeout)
         except TimeoutError:
