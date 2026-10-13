@@ -23,6 +23,10 @@ STORE_OPEN_TIMEOUT = 10.0
 STORE_SETTLE = 3.0  # let the details page render and focus its primary button
 STORE_LEAVE_TIMEOUT = 8.0
 REMOTE_CONNECT_TIMEOUT = 60.0  # the remote service comes back some seconds after a wake (seen: ~45 s)
+# The remote connects only on demand. An awake projector answers at once; a sleeping one
+# does not, and then Cast wakes it.
+REMOTE_PROBE_TIMEOUT = 3.0
+APP_INFO_TIMEOUT = 2.0  # right after connecting, the projector reports its foreground app
 
 
 class ProjectorError(Exception):
@@ -115,6 +119,7 @@ class Projector:
             return PrepareResult("No projector address configured; assuming Jellyfin is already open", False)
 
         actions = []
+        await self.remote.ensure_connected(REMOTE_PROBE_TIMEOUT, REMOTE_PROBE_TIMEOUT)
         if await self.is_on(address) is not True:
             try:
                 woke = await self.waker(address)
@@ -129,8 +134,17 @@ class Projector:
                 await self._wait(awake, wake_timeout, "Projector did not wake up", poll)
                 actions.append("woke projector (Cast)")
 
-        if not self.remote.connected and await self.remote.wait_connected(REMOTE_CONNECT_TIMEOUT):
-            actions.append("remote reconnected")
+        if not self.remote.connected and await self.remote.ensure_connected(REMOTE_CONNECT_TIMEOUT):
+            actions.append("remote connected")
+        if self.remote.connected:
+
+            async def app_known() -> bool:
+                return self.remote.current_app is not None
+
+            try:
+                await self._wait(app_known, APP_INFO_TIMEOUT, "", poll)
+            except ProjectorError:
+                pass  # unknown counts as "not Jellyfin": opening it again is harmless
 
         launched = False
         if await self.current_app(address) != JELLYFIN_PACKAGE:
@@ -155,6 +169,8 @@ class Projector:
         address = self.connect()
         if not address:
             return {"state": "unconfigured", "message": "Set the projector address in settings"}
+        if self.remote.state in ("disconnected", "unreachable"):  # not while a show is connecting
+            await self.remote.ensure_connected(REMOTE_PROBE_TIMEOUT, REMOTE_PROBE_TIMEOUT)
         adb = await self._adb(address)
         status = {
             "address": address,

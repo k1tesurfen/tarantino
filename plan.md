@@ -48,6 +48,7 @@ The specific addresses and names are kept out of the repo on purpose.
 - **Projector control** (revised after testing in M2): in network standby the projector drops ADB and ping and only keeps Chromecast and the Android TV Remote service reachable. So:
   - **Chromecast** wakes the projector from standby, by launching the Default Media Receiver.
   - The **Android TV Remote protocol (v2)** reads power state and the current app and launches Jellyfin. It needs a one-time pairing from the admin page.
+  - The remote connects **only on demand**: when a show starts or the admin page asks for status. A show first probes for about 3 s. If the projector answers and is on, it skips the wake. Otherwise it wakes the projector via Cast and retries every 2 s for up to 60 s. The connection stays open while the projector keeps it alive. Once it drops (standby), it is not retried in the background.
   - **ADB** is only a fallback, used when it happens to be available. Wireless debugging on this projector's firmware disables itself.
   - The Jellyfin Android TV app declares **no deep links**, and the remote protocol can only open links. Tarantino therefore opens Jellyfin's Play Store page and presses OK on its focused "Open" button, which takes about 5 s. A pending app update would break this, and the show then fails with a clear hint.
   - Verified on the real device: from standby to a playing film takes about 20 s. The projector's optics start later than Android, so the wake and launch steps are never visible.

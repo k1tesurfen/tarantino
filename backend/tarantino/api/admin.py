@@ -9,7 +9,7 @@ from sqlalchemy import func, or_, select
 from tarantino import status
 from tarantino.jellyfin.client import JellyfinError
 from tarantino.models import LibraryItem
-from tarantino.projector.remote import RemoteError
+from tarantino.projector.remote import CONNECT_TIMEOUT, RemoteError
 from tarantino.services import Services, get_services
 from tarantino.settings import AppSettings
 from tarantino.shows.orchestrator import find_projector_session
@@ -169,6 +169,7 @@ async def remote_command(services: ServicesDep, body: RemoteCommand) -> dict:
     """Send a key (e.g. KEYCODE_HOME) or launch an app link via the Android TV remote; for diagnostics."""
     services.projector.connect()
     remote = services.projector.remote
+    await remote.ensure_connected(CONNECT_TIMEOUT)
     try:
         if body.key:
             remote.send_key(body.key)

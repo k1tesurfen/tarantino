@@ -199,7 +199,7 @@ class FakeProjector:
         elif key == "KEYCODE_BACK":
             self.foreground = "com.google.android.tvlauncher"
 
-    async def wait_connected(self, timeout):
+    async def ensure_connected(self, timeout, attempt_timeout=None):
         import asyncio
 
         if self.state in ("unconfigured", "unpaired", "pairing"):
@@ -267,6 +267,14 @@ class FakeAdb:
     async def launch_jellyfin(self) -> None:
         self.p.calls.append("adb-launch")
         self.p._open("org.jellyfin.androidtv")
+
+
+@pytest.fixture(autouse=True)
+def fast_remote_probe(monkeypatch):
+    from tarantino.projector import projector
+
+    monkeypatch.setattr(projector, "REMOTE_PROBE_TIMEOUT", 0.02)
+    monkeypatch.setattr(projector, "APP_INFO_TIMEOUT", 0.02)
 
 
 @pytest.fixture

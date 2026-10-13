@@ -16,7 +16,7 @@ export type ProjectorStatus = {
 	state: SubsystemState;
 	message: string | null;
 	address?: string;
-	remote?: 'connected' | 'connecting' | 'unreachable' | 'unpaired' | 'pairing' | 'unconfigured';
+	remote?: 'connected' | 'disconnected' | 'connecting' | 'unreachable' | 'unpaired' | 'pairing' | 'unconfigured';
 	adb?: 'device' | 'unavailable';
 	power?: 'on' | 'standby' | 'unknown';
 	foreground?: string | null;

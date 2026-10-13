@@ -1,10 +1,9 @@
-"""The Android TV remote link: reconnecting quickly while a show waits for it."""
+"""The Android TV remote link: connects only on demand, never retries in the background."""
 
 import asyncio
 
 from androidtvremote2 import CannotConnect
 
-from tarantino.projector import remote as remote_module
 from tarantino.projector.remote import RemoteLink
 
 
@@ -29,7 +28,7 @@ class SlowBootRemote:
         self.on_available = callback
 
     def keep_reconnecting(self, callback):
-        self.library_reconnecting = True  # its back-off grows to 30 s; never retries in these tests
+        self.library_reconnecting = True  # would retry forever with a back-off of up to 30 s
 
     def disconnect(self):
         self.library_reconnecting = False
@@ -48,81 +47,72 @@ class HangingRemote(SlowBootRemote):
         await asyncio.Event().wait()
 
 
-def test_a_waiting_show_retries_at_a_short_interval(tmp_path, monkeypatch):
-    """Tonight's failure: the first attempt after a wake comes too early, and the next regular
-    retry (30 s) came after the show had given up. A waiting show now retries every few seconds."""
-    monkeypatch.setattr(remote_module, "RETRY_SECONDS", 30)
+def link_for(fake, tmp_path) -> RemoteLink:
+    link = RemoteLink(tmp_path, factory=lambda *args: fake)
+    link.retry_seconds = 0.05
+    link.configure("192.0.2.50")
+    return link
 
+
+def test_configuring_does_not_connect(tmp_path):
+    async def scenario():
+        fake = SlowBootRemote(ready_after=0)
+        link = link_for(fake, tmp_path)
+        await asyncio.sleep(0.1)
+        return link.state, fake.attempts
+
+    assert asyncio.run(scenario()) == ("disconnected", 0)
+
+
+def test_connects_on_demand_and_retries_until_the_projector_is_up(tmp_path):
     async def scenario():
         fake = SlowBootRemote(ready_after=0.3)
-        link = RemoteLink(tmp_path, factory=lambda *args: fake)
-        link.waiting_retry_seconds = 0.05
-        link.configure("192.0.2.50")
-        await asyncio.sleep(0.05)
-        assert link.state == "unreachable"  # in standby: now waiting for the 30 s retry
-        connected = await link.wait_connected(timeout=2)
-        link.stop()
-        return connected, fake.attempts
+        link = link_for(fake, tmp_path)
+        connected = await link.ensure_connected(timeout=2)
+        return connected, link.state, fake.attempts, fake.library_reconnecting
 
-    connected, attempts = asyncio.run(scenario())
-    assert connected
-    assert attempts >= 3  # retried while waiting instead of sleeping 30 s
+    connected, state, attempts, watching = asyncio.run(scenario())
+    assert connected and state == "connected"
+    assert attempts >= 3  # retried every few seconds (here: 0.05 s)
+    assert watching  # the library reports drops of this connection
 
 
-def test_without_a_waiting_show_the_regular_interval_applies(tmp_path, monkeypatch):
+def test_gives_up_at_the_timeout(tmp_path):
     async def scenario():
         fake = SlowBootRemote(ready_after=10)
-        link = RemoteLink(tmp_path, factory=lambda *args: fake)
-        link.waiting_retry_seconds = 0.01
-        link.configure("192.0.2.50")
-        await asyncio.sleep(0.2)
-        assert await link.wait_connected(timeout=0.1) is False
-        attempts_after_wait = fake.attempts
-        await asyncio.sleep(0.2)
-        link.stop()
-        return attempts_after_wait, fake.attempts
+        link = link_for(fake, tmp_path)
+        return await link.ensure_connected(timeout=0.2), link.state
 
-    during, after = asyncio.run(scenario())
-    assert after <= during + 1  # back to the 30 s interval once nobody waits
+    assert asyncio.run(scenario()) == (False, "unreachable")
 
 
-def test_after_a_dropped_connection_a_waiting_show_retries_at_a_short_interval(tmp_path):
-    """The failure after the first fix: the remote had been connected the evening before, so the
-    library's own reconnect (back-off up to 30 s) was in charge and the short retry never ran."""
+def test_a_dropped_connection_is_not_retried_in_the_background(tmp_path):
+    """The projector goes to standby: the link lets go, and the next show connects again."""
 
     async def scenario():
         fake = SlowBootRemote(ready_after=0)
-        link = RemoteLink(tmp_path, factory=lambda *args: fake)
-        link.waiting_retry_seconds = 0.05
-        link.configure("192.0.2.50")
-        await asyncio.sleep(0.05)
-        assert link.state == "connected"
-        fake.go_to_standby(ready_after=0.3)
-        assert link.state == "unreachable"
-        attempts_before = fake.attempts
-        connected = await link.wait_connected(timeout=2)
-        state, reconnecting = link.state, fake.library_reconnecting
-        link.stop()
-        return connected, fake.attempts - attempts_before, state, reconnecting
+        link = link_for(fake, tmp_path)
+        assert await link.ensure_connected(timeout=1)
+        fake.go_to_standby(ready_after=0.2)
+        attempts = fake.attempts
+        await asyncio.sleep(0.3)
+        idle = (link.state, fake.attempts - attempts, fake.library_reconnecting)
+        reconnected = await link.ensure_connected(timeout=1)
+        return idle, reconnected
 
-    connected, attempts, state, reconnecting = asyncio.run(scenario())
-    assert connected and state == "connected"
-    assert attempts >= 3
-    assert reconnecting  # the library watches the new connection again
+    idle, reconnected = asyncio.run(scenario())
+    assert idle == ("disconnected", 0, False)
+    assert reconnected
 
 
-def test_a_hanging_connect_attempt_times_out(tmp_path, monkeypatch):
-    monkeypatch.setattr(remote_module, "CONNECT_TIMEOUT", 0.05)
-
+def test_a_hanging_connect_attempt_times_out(tmp_path):
     async def scenario():
         fake = HangingRemote(ready_after=0)
-        link = RemoteLink(tmp_path, factory=lambda *args: fake)
-        link.waiting_retry_seconds = 0.01
-        link.configure("192.0.2.50")
-        connected = await link.wait_connected(timeout=0.5)
-        link.stop()
-        return connected, fake.attempts, link
+        link = link_for(fake, tmp_path)
+        link.retry_seconds = 0.01
+        connected = await link.ensure_connected(timeout=0.5, attempt_timeout=0.05)
+        return connected, fake.attempts
 
-    connected, attempts, _ = asyncio.run(scenario())
+    connected, attempts = asyncio.run(scenario())
     assert not connected
     assert attempts >= 3  # each attempt gave up instead of blocking the loop

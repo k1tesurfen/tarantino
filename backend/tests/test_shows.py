@@ -109,7 +109,7 @@ def test_waits_for_the_remote_to_reconnect_after_a_wake(synced, fake_projector, 
     fake_projector.reconnect_after_wake = 0.1
     show = start(synced, MOVIE)
     assert show["state"] == "playing", show
-    assert show["steps"][1]["message"] == "woke projector (Cast), remote reconnected, opened Jellyfin"
+    assert show["steps"][1]["message"] == "woke projector (Cast), remote connected, opened Jellyfin"
     assert fake_projector.calls == ["cast-wake", "remote-launch", "KEYCODE_DPAD_CENTER"]
 
 
