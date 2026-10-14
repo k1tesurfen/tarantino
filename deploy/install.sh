@@ -31,6 +31,8 @@ if [[ "$(stat -c %U "$APP_DIR")" != "$DEPLOY_USER" ]]; then
 fi
 
 echo "==> packages"
+# Output goes to /dev/null, so nothing may ask questions (needrestart restarts daemons itself).
+export DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a
 apt-get update -qq
 apt-get install -y -qq python3 python3-venv nodejs npm adb avahi-daemon avahi-utils bluez iproute2 curl git >/dev/null
 
