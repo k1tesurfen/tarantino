@@ -13,6 +13,7 @@ from fastapi import Request
 from sqlalchemy import Engine
 from sqlalchemy.orm import sessionmaker
 
+from tarantino.btremote.client import BtRemote
 from tarantino.cassettes import FRANCHISE, Cassettes
 from tarantino.config import Settings, load_secret
 from tarantino.configio.backups import BackupStore
@@ -64,13 +65,14 @@ class Services:
         timing: Timing | None = None,
         remote: RemoteLink | None = None,
         waker: Callable[[str], Awaitable[bool]] = cast_wake,
+        bt: BtRemote | None = None,
     ) -> "Services":
         engine = create_db_engine(env.data_dir)
         migrate(engine)
         session_factory = make_session_factory(engine)
         settings = SettingsStore(session_factory)
         remote = remote or RemoteLink(env.data_dir / "androidtv")
-        projector = Projector(settings, remote, adb_factory, waker)
+        projector = Projector(settings, remote, adb_factory, waker, bt or BtRemote(env.btremote_socket))
         programme = Programme(session_factory, settings)
         programme.ensure_rooms()
         events = EventBus()

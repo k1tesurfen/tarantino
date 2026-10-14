@@ -35,6 +35,9 @@ class Settings(BaseSettings):
 
     log_level: str = "INFO"
 
+    # Socket of the Bluetooth remote daemon (tarantino-btremote.service).
+    btremote_socket: Path = Path("/run/tarantino-btremote/remote.sock")
+
 
 SECRET_FILE = "secret.key"
 

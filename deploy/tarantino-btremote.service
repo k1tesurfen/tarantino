@@ -1,0 +1,26 @@
+[Unit]
+Description=tarantino Bluetooth remote for the projector
+# Re-register with bluetoothd whenever it restarts.
+After=bluetooth.service
+Requires=bluetooth.service
+PartOf=bluetooth.service
+
+[Service]
+Type=simple
+User=tarantino
+Group=tarantino
+ExecStart=@APP_DIR@/.venv/bin/tarantino-btremote
+Restart=always
+RestartSec=5
+# The web app (same user) talks to the remote through this socket.
+RuntimeDirectory=tarantino-btremote
+RuntimeDirectoryMode=0750
+Environment=TARANTINO_BTREMOTE_SOCKET=/run/tarantino-btremote/remote.sock
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

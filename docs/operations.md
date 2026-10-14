@@ -8,8 +8,9 @@ How to run, check, back up and troubleshoot tarantino on the mini-PC. Installati
 |---|---|
 | Checkout and virtualenv | `/opt/tarantino`, `/opt/tarantino/.venv` (owned by the deploy user) |
 | Data: database, signing key, Android TV remote pairing, backups | `/var/lib/tarantino` (owned by the `tarantino` service user) |
+| Bluetooth remote pairing | BlueZ, `/var/lib/bluetooth` (root) |
 | Secrets | `/etc/tarantino/tarantino.env` (see [`deploy/env.example`](../deploy/env.example)) |
-| Services | `tarantino.service` (web app on port 80), `tarantino-mdns.service` (`tarantino.local` alias) |
+| Services | `tarantino.service` (web app on port 80), `tarantino-mdns.service` (`tarantino.local` alias), `tarantino-btremote.service` (Bluetooth remote for the projector) |
 
 Everything else (rooms, cassettes, device addresses, theme names) is configured in the admin website and stored in the database.
 
@@ -52,6 +53,8 @@ sudo journalctl -u tarantino.service -p warning    # warnings and errors only
 
 Set `TARANTINO_LOG_LEVEL=DEBUG` in the env file and restart the service for more detail.
 
+The Bluetooth remote logs to its own unit: `sudo journalctl -u tarantino-btremote.service -f`.
+
 Each show also keeps a step log (resolve → projector → session → play). It's on the admin dashboard, and every cassette insert is in the recorder log on the admin cassettes page.
 
 ## The VHS recorder API
@@ -80,7 +83,8 @@ Movies of a TMDb collection (two or more distinct films in the library) are a fr
 |---|---|
 | **The mini-PC reboots** | tarantino starts with the system. Today's programme, sold-out badges, sticky series and cassettes are in the database, and a missing day is generated on first use. A show that was starting during the restart is marked *failed: interrupted by a restart*. Learn mode is cancelled. |
 | **Jellyfin is down or restarting** | The website keeps working from the library cache, with posters already in the browser cache. The library sync retries after 1, 2, 4 and 8 minutes, then every 15 minutes. Starting a film fails with *Jellyfin unreachable*. The admin dashboard shows the Jellyfin card in red. |
-| **The projector is off or in standby** | Starting a show wakes it via Cast and opens Jellyfin. If it isn't reachable at all (no power, Wi-Fi down), the show fails at the *projector* step with a clear message. The remote connection comes back by itself when the projector does. |
+| **The projector is off or in standby** | Starting a show wakes it via the Bluetooth remote and opens Jellyfin with the shortcut key. Without a paired Bluetooth remote, or if the projector doesn't answer it, the show wakes it via Cast instead. If it isn't reachable at all (no power), the show fails at the *projector* step with a clear message. |
+| **The Bluetooth remote restarts while the projector is on** | The projector shows the remote as disconnected and only reconnects on its next wake. Until then, shows use Cast and the Android TV remote. `update.sh` therefore restarts the Bluetooth remote only when its code changed. |
 | **The NAS is down** | The media card shows the mounts as unavailable. Mounts are checked with a timeout, so a hanging NFS server never blocks tarantino. Jellyfin can't play the files. |
 | **tarantino itself restarts** | Open cinema pages show a small "reconnecting" note, then reload the programme and pick up a show's result automatically. The admin pages retry every few seconds. |
 
@@ -96,6 +100,16 @@ The last 14 of each kind are kept in `/var/lib/tarantino/backups`. You can resto
 
 To move to a new machine: install, then import the latest backup. Library titles are matched by their TMDB/IMDb/TVDB IDs if Jellyfin has given them new IDs.
 
+## Bluetooth remote
+
+One-time setup:
+
+1. On the projector: *Settings → Remotes & Accessories → set up remote buttons → shortcut (star) button* → Jellyfin.
+2. Admin dashboard → Projector card → *Bluetooth remote* → **Pair**. On the projector: *Remotes & Accessories*, forget an old "Tarantino Remote", then *Add accessory* → "Tarantino Remote".
+3. Test with *Shortcut key* (opens Jellyfin) and *Power* → wait about 30 s → *Wake*.
+
+If a pairing hangs on the projector, restart the projector (button on the chassis) and pair again.
+
 ## Troubleshooting
 
 | Symptom | Check |
@@ -103,6 +117,8 @@ To move to a new machine: install, then import the latest backup. Library titles
 | `tarantino.local` doesn't resolve | `sudo systemctl status tarantino-mdns.service`. Try the mini-PC's IP address. |
 | Admin shows "Jellyfin: error" | Is Jellyfin running? Are the API key and user right in the env file? |
 | Projector card says *unpaired* | Admin dashboard → pair the projector, then enter the code shown on screen. |
+| Bluetooth remote: *service not running* | `sudo systemctl status tarantino-btremote.service`; after the first update with it, run `sudo deploy/install.sh` once. |
+| Show step says *Bluetooth failed (… did not connect …)* | The remote was restarted while the projector was on, or the projector lost its pairing. Check *Remotes & Accessories* on the projector; pair again if "Tarantino Remote" is missing. |
 | A show fails at *session* | Pick the projector's device on the admin dashboard. Open the Jellyfin app on the projector once by hand. |
 | A show fails at *projector* after "Play Store" | The Jellyfin app has an update pending. Update it on the projector. |
 | A cassette does nothing | Admin → *Cassettes* → recorder log. *unknown* means it was never learned, so bind it there. |

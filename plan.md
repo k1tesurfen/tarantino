@@ -45,8 +45,10 @@ The specific addresses and names are kept out of the repo on purpose.
 
 ### Playback
 - **Players:** Tarantino controls the Jellyfin Android TV app through the Jellyfin Sessions API.
-- **Projector control** (revised after testing in M2): in network standby the projector drops ADB and ping and only keeps Chromecast and the Android TV Remote service reachable. So:
-  - **Chromecast** wakes the projector from standby, by launching the Default Media Receiver.
+- **Projector control** (revised after testing in M2, and again on 2026-10-14): in network standby the projector drops ADB and ping and only keeps Chromecast and the Android TV Remote service reachable. After a night in standby it can also drop off the network entirely, and then Cast cannot wake it. So:
+  - The **Bluetooth remote** is the primary path. A separate daemon (`tarantino-btremote.service`) turns the mini-PC's Bluetooth adapter into a HID remote that the projector pairs with as an accessory (admin dashboard → *Pair*). The projector's Bluetooth chip stays powered in standby and wakes the system on a wake advert carrying its own Bluetooth address; the projector then reconnects to the remote within 1–2 s. Tarantino then presses the projector's **shortcut key** (HID programmable button 1, Android `MACRO_1`), which is set to open Jellyfin in the projector's remote settings. The daemon is separate so that redeploying the web app does not drop the connection: a projector that is on only reconnects to the remote on its next wake.
+  - If Bluetooth is not paired, its service is not running or the projector does not connect after the wake advert, a show falls back to the path below (and the step log says so).
+  - **Chromecast** wakes the projector from network standby, by launching the Default Media Receiver.
   - The **Android TV Remote protocol (v2)** reads power state and the current app and launches Jellyfin. It needs a one-time pairing from the admin page.
   - The remote connects **only on demand**: when a show starts or the admin page asks for status. A show first probes for about 3 s. If the projector answers and is on, it skips the wake. Otherwise it wakes the projector via Cast and retries every 2 s for up to 60 s. The connection stays open while the projector keeps it alive. Once it drops (standby), it is not retried in the background.
   - **ADB** is only a fallback, used when it happens to be available. Wireless debugging on this projector's firmware disables itself.
@@ -185,7 +187,8 @@ backend/
     config.py          .env settings (pydantic-settings)
     db.py, models.py   SQLAlchemy models
     jellyfin/          API client, library sync, image proxy
-    projector/         ADB wrapper (connect, wake, launch, foreground, screen state)
+    projector/         facade over Bluetooth remote, Android TV remote, Cast and ADB
+    btremote/          Bluetooth remote daemon (HID over GATT via BlueZ) and its socket client
     programme/         filters, weighting, generator, series stickiness, showtimes
     shows/             orchestrator (state machine + step log), SSE broadcaster
     status/            subsystem health checks
@@ -291,7 +294,8 @@ Each milestone ends with a test on the mini-PC and a commit to `main`.
 
 🧪 = implemented and deployed; the "Done when" check on the mini-PC is still open (see below).
 
-**Open checks (as of 2026-10-11):**
+**Open checks (as of 2026-10-14):**
+- **Bluetooth remote** (2026-10-14): pair through the admin dashboard after `sudo deploy/install.sh`, then start a show with the projector in standby (expect "woke projector (Bluetooth), opened Jellyfin (shortcut key)"), and once after a night in standby when the projector has dropped off the network.
 - **M7:** run `tarantino play 3` on the mini-PC; it should start room 3's film on the projector. The test cassette `FAKE0003` is bound to room 3 for this. Remove it on the admin *Cassettes* page afterwards. Learn, unknown inserts and eject were already verified on the mini-PC.
 - **M9** (deployed 2026-10-12): start a franchise part from the website and check that its room offers "Next"; learn a franchise cassette (`tarantino learn franchise`) and alternate it with the room cassette for a short marathon; insert the same cassette twice (second read ignored); over the following days, check that started franchises come back at about the daily chance (admin programme: *continued*). The programme of 2026-10-12 was generated before M9 and may still contain sequels.
 - **M8:** reboot the mini-PC, restart Jellyfin, and start a show with the projector off; each should end with a clear status in admin and on the cinema site. Also confirm `systemctl restart tarantino.service` now finishes within a few seconds with a cinema page open (updated unit installed 2026-10-11).

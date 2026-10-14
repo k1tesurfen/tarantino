@@ -1,14 +1,18 @@
 """One facade over the projector's control channels.
 
-- Android TV Remote protocol: power state, current app, launching apps (primary)
-- Chromecast: waking from network standby (the only channel that works there)
+- Bluetooth remote (separate daemon): wakes the projector from any standby and opens
+  Jellyfin with the shortcut key (primary, once paired)
+- Android TV Remote protocol: power state, current app, launching apps
+- Chromecast: waking from network standby
 - ADB: fallback for state and app launch when it happens to be available
 """
 
 import asyncio
+import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
+from tarantino.btremote.client import BtRemote, BtRemoteError
 from tarantino.projector.adb import JELLYFIN_PACKAGE, Adb, AdbError
 from tarantino.projector.cast import CastError, cast_wake
 from tarantino.projector.remote import RemoteLink
@@ -27,6 +31,10 @@ REMOTE_CONNECT_TIMEOUT = 60.0  # the remote service comes back some seconds afte
 # does not, and then Cast wakes it.
 REMOTE_PROBE_TIMEOUT = 3.0
 APP_INFO_TIMEOUT = 2.0  # right after connecting, the projector reports its foreground app
+BT_WAKE_TIMEOUT = 10.0  # a sleeping projector connects to the remote 1-2 s after the wake advert
+BT_KEY_SETTLE = 2.0  # after the wake, before the shortcut key
+
+log = logging.getLogger(__name__)
 
 
 class ProjectorError(Exception):
@@ -46,11 +54,13 @@ class Projector:
         remote: RemoteLink,
         adb_factory: Callable[[str], Adb] = Adb,
         waker: Callable[[str], Awaitable[bool]] = cast_wake,
+        bt: BtRemote | None = None,
     ):
         self.settings = settings
         self.remote = remote
         self.adb_factory = adb_factory
         self.waker = waker
+        self.bt = bt
 
     def connect(self) -> str | None:
         """Return the configured address; (re)connects the remote when it changed in admin."""
@@ -119,6 +129,16 @@ class Projector:
             return PrepareResult("No projector address configured; assuming Jellyfin is already open", False)
 
         actions = []
+        if self.bt is not None:
+            try:
+                result = await self._prepare_via_bluetooth(address)
+            except BtRemoteError as exc:
+                log.warning("Bluetooth remote failed (%s); using Cast and the Android TV remote", exc)
+                actions.append(f"Bluetooth failed ({exc})")
+            else:
+                if result:
+                    return result
+
         await self.remote.ensure_connected(REMOTE_PROBE_TIMEOUT, REMOTE_PROBE_TIMEOUT)
         if await self.is_on(address) is not True:
             try:
@@ -158,6 +178,29 @@ class Projector:
             actions.append("opened Jellyfin")
         return PrepareResult(", ".join(actions) or "Projector on, Jellyfin open", launched)
 
+    async def _prepare_via_bluetooth(self, address: str) -> PrepareResult | None:
+        """Wake via the Bluetooth remote and open Jellyfin with the shortcut key.
+
+        None when no Bluetooth remote is paired (or its service is not running).
+        """
+        state = await self.bt.status()
+        if not state.get("paired"):
+            return None
+        actions = []
+        if state.get("connected"):
+            # On already: leave Jellyfin alone if the Android TV remote sees it in front.
+            await self.remote.ensure_connected(REMOTE_PROBE_TIMEOUT, REMOTE_PROBE_TIMEOUT)
+            if await self.current_app(address) == JELLYFIN_PACKAGE:
+                return PrepareResult("Projector on, Jellyfin open", False)
+        else:
+            if not await self.bt.wake(BT_WAKE_TIMEOUT):
+                raise BtRemoteError("the projector did not connect after the wake advert")
+            actions.append("woke projector (Bluetooth)")
+            await asyncio.sleep(BT_KEY_SETTLE)
+        await self.bt.key("star")
+        actions.append("opened Jellyfin (shortcut key)")
+        return PrepareResult(", ".join(actions), True)
+
     async def _wait(self, check, timeout: float, error: str, poll: float) -> None:
         deadline = asyncio.get_running_loop().time() + timeout
         while await check() is not True:
@@ -166,9 +209,10 @@ class Projector:
             await asyncio.sleep(poll)
 
     async def status(self) -> dict:
+        bluetooth = await self.bt.status() if self.bt else None
         address = self.connect()
         if not address:
-            return {"state": "unconfigured", "message": "Set the projector address in settings"}
+            return {"state": "unconfigured", "message": "Set the projector address in settings", "bluetooth": bluetooth}
         if self.remote.state in ("disconnected", "unreachable"):  # not while a show is connecting
             await self.remote.ensure_connected(REMOTE_PROBE_TIMEOUT, REMOTE_PROBE_TIMEOUT)
         adb = await self._adb(address)
@@ -178,10 +222,15 @@ class Projector:
             "adb": "device" if adb else "unavailable",
             "power": _power(await self.is_on(address)),
             "foreground": await self.current_app(address),
+            "bluetooth": bluetooth,
         }
         status["jellyfin_in_front"] = status["foreground"] == JELLYFIN_PACKAGE
         if self.remote.state == "connected":
             return status | {"state": "ok", "message": None}
+        if bluetooth and bluetooth.get("paired"):
+            # In standby the Android TV remote is unreachable; the Bluetooth remote wakes it.
+            message = None if bluetooth.get("connected") else "Bluetooth remote paired, not connected (standby?)"
+            return status | {"state": "ok", "message": message}
         if self.remote.state in ("unpaired", "pairing"):
             return status | {"state": "warning", "message": "Pair the Android TV remote below"}
         if adb:

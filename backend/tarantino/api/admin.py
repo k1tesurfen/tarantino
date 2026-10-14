@@ -1,14 +1,16 @@
 import asyncio
 import re
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import func, or_, select
 
 from tarantino import status
+from tarantino.btremote.client import BtRemoteError, BtRemoteUnavailable
 from tarantino.jellyfin.client import JellyfinError
 from tarantino.models import LibraryItem
+from tarantino.projector.projector import BT_WAKE_TIMEOUT
 from tarantino.projector.remote import CONNECT_TIMEOUT, RemoteError
 from tarantino.services import Services, get_services
 from tarantino.settings import AppSettings
@@ -178,6 +180,39 @@ async def remote_command(services: ServicesDep, body: RemoteCommand) -> dict:
     except RemoteError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
     return {"power": remote.is_on, "current_app": remote.current_app}
+
+
+BT_PAIRING_SECONDS = 180
+
+
+class BluetoothCommand(BaseModel):
+    action: Literal["pair", "stop", "unpair", "wake", "key"]
+    key: str | None = None
+
+
+@router.post("/projector/bluetooth")
+async def bluetooth_command(services: ServicesDep, body: BluetoothCommand) -> dict:
+    """Pair, unpair or test the Bluetooth remote; returns its state."""
+    bt = services.projector.bt
+    if bt is None:
+        raise HTTPException(status_code=503, detail="Bluetooth remote is not set up")
+    try:
+        if body.action == "pair":
+            await bt.pair(BT_PAIRING_SECONDS)
+        elif body.action == "stop":
+            await bt.stop_pairing()
+        elif body.action == "unpair":
+            await bt.unpair()
+        elif body.action == "wake":
+            if not await bt.wake(BT_WAKE_TIMEOUT):
+                raise HTTPException(status_code=409, detail="The projector did not connect after the wake advert")
+        else:
+            await bt.key(body.key or "")
+    except BtRemoteUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except BtRemoteError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return await bt.status()
 
 
 # -- shows ------------------------------------------------------------------

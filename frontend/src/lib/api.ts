@@ -21,6 +21,16 @@ export type ProjectorStatus = {
 	power?: 'on' | 'standby' | 'unknown';
 	foreground?: string | null;
 	jellyfin_in_front?: boolean;
+	bluetooth?: BluetoothStatus | null;
+};
+
+export type BluetoothStatus = {
+	available: boolean;
+	paired: boolean;
+	connected: boolean;
+	pairing: boolean;
+	name?: string | null;
+	address?: string | null;
 };
 
 export type SessionStatus = {
@@ -188,6 +198,9 @@ const post = <T>(path: string, body?: unknown) =>
 export const startPairing = () => post<{ state: string }>('/api/admin/projector/pairing/start');
 export const finishPairing = (code: string) =>
 	post<{ state: string }>('/api/admin/projector/pairing/finish', { code });
+
+export const bluetoothCommand = (action: 'pair' | 'stop' | 'unpair' | 'wake' | 'key', key?: string) =>
+	post<BluetoothStatus>('/api/admin/projector/bluetooth', { action, key });
 
 export const getSession = () => request<AdminSession>('/api/admin/session');
 export const login = (password: string) => post<{ authenticated: boolean }>('/api/admin/login', { password });

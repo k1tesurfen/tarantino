@@ -19,6 +19,7 @@ dependencies = [
     "typer==0.27.2",
     "pychromecast==14.0.10",
     "androidtvremote2==0.3.2",
+    "dbus-fast==5.0.22",
 ]
 
 [project.optional-dependencies]
@@ -26,6 +27,7 @@ dev = ["pytest==9.1.1"]
 
 [project.scripts]
 tarantino = "tarantino.cli:app"
+tarantino-btremote = "tarantino.btremote.daemon:main"
 
 [tool.setuptools.packages.find]
 include = ["tarantino*"]

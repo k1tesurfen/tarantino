@@ -32,7 +32,7 @@ fi
 
 echo "==> packages"
 apt-get update -qq
-apt-get install -y -qq python3 python3-venv nodejs npm adb avahi-daemon avahi-utils iproute2 curl git >/dev/null
+apt-get install -y -qq python3 python3-venv nodejs npm adb avahi-daemon avahi-utils bluez iproute2 curl git >/dev/null
 
 echo "==> service user and directories"
 if ! id "$SERVICE_USER" &>/dev/null; then
@@ -55,18 +55,19 @@ echo "==> build (as $DEPLOY_USER)"
 sudo -u "$DEPLOY_USER" -H "$APP_DIR/deploy/build.sh"
 
 echo "==> systemd units"
-for unit in tarantino.service tarantino-mdns.service; do
+for unit in tarantino.service tarantino-mdns.service tarantino-btremote.service; do
     sed "s|@APP_DIR@|$APP_DIR|g" "$APP_DIR/deploy/$unit" >"/etc/systemd/system/$unit"
 done
 systemctl daemon-reload
 systemctl enable --now avahi-daemon.service
-systemctl enable tarantino.service tarantino-mdns.service
-systemctl restart tarantino.service tarantino-mdns.service
+systemctl enable --now bluetooth.service
+systemctl enable tarantino.service tarantino-mdns.service tarantino-btremote.service
+systemctl restart tarantino.service tarantino-mdns.service tarantino-btremote.service
 
 echo "==> sudo rule for $DEPLOY_USER (restart/status of tarantino only)"
 SUDOERS=/etc/sudoers.d/tarantino
 cat >"$SUDOERS.tmp" <<EOF
-$DEPLOY_USER ALL=(root) NOPASSWD: /usr/bin/systemctl restart tarantino.service, /usr/bin/systemctl restart tarantino-mdns.service, /usr/bin/systemctl status tarantino.service, /usr/bin/systemctl status tarantino-mdns.service, /usr/bin/journalctl -u tarantino.service *, /usr/bin/journalctl -u tarantino-mdns.service *
+$DEPLOY_USER ALL=(root) NOPASSWD: /usr/bin/systemctl restart tarantino.service, /usr/bin/systemctl restart tarantino-mdns.service, /usr/bin/systemctl restart tarantino-btremote.service, /usr/bin/systemctl status tarantino.service, /usr/bin/systemctl status tarantino-mdns.service, /usr/bin/systemctl status tarantino-btremote.service, /usr/bin/journalctl -u tarantino.service *, /usr/bin/journalctl -u tarantino-mdns.service *, /usr/bin/journalctl -u tarantino-btremote.service *
 EOF
 visudo -cf "$SUDOERS.tmp" >/dev/null
 install -m 0440 "$SUDOERS.tmp" "$SUDOERS"

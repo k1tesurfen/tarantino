@@ -269,12 +269,76 @@ class FakeAdb:
         self.p._open("org.jellyfin.androidtv")
 
 
+class FakeBluetooth:
+    """The Bluetooth remote daemon, acting on a FakeProjector."""
+
+    def __init__(self, projector: FakeProjector):
+        self.p = projector
+        self.available = True
+        self.paired = False
+        self.pairing = False
+        self.wake_works = True
+
+    @property
+    def connected(self) -> bool:
+        return self.paired and self.p.on
+
+    def _check(self) -> None:
+        from tarantino.btremote.client import BtRemoteUnavailable
+
+        if not self.available:
+            raise BtRemoteUnavailable("Bluetooth remote service not reachable (FileNotFoundError)")
+
+    async def status(self) -> dict:
+        from tarantino.btremote.client import UNAVAILABLE
+
+        if not self.available:
+            return dict(UNAVAILABLE)
+        return {"available": True, "paired": self.paired, "name": "Projector" if self.paired else None,
+                "connected": self.connected, "pairing": self.pairing}  # fmt: skip
+
+    async def wake(self, timeout: float) -> bool:
+        self._check()
+        self.p.calls.append("bt-wake")
+        if self.wake_works and self.paired:
+            self.p.on = True
+        return self.connected
+
+    async def key(self, name: str) -> None:
+        from tarantino.btremote.client import BtRemoteError
+
+        self._check()
+        if not self.connected:
+            raise BtRemoteError("The projector is not connected to the Bluetooth remote")
+        self.p.calls.append(f"bt-{name}")
+        if name == "star":
+            self.p._open("org.jellyfin.androidtv")
+        elif name == "power":
+            self.p.on = False
+
+    async def pair(self, seconds: float) -> dict:
+        self._check()
+        self.paired, self.pairing = False, True
+        return await self.status()
+
+    async def stop_pairing(self) -> dict:
+        self._check()
+        self.pairing = False
+        return await self.status()
+
+    async def unpair(self) -> dict:
+        self._check()
+        self.paired = False
+        return await self.status()
+
+
 @pytest.fixture(autouse=True)
 def fast_remote_probe(monkeypatch):
     from tarantino.projector import projector
 
     monkeypatch.setattr(projector, "REMOTE_PROBE_TIMEOUT", 0.02)
     monkeypatch.setattr(projector, "APP_INFO_TIMEOUT", 0.02)
+    monkeypatch.setattr(projector, "BT_KEY_SETTLE", 0)
 
 
 @pytest.fixture
@@ -297,15 +361,20 @@ def fake_projector(fake_jellyfin) -> FakeProjector:
     return FakeProjector(fake_jellyfin)
 
 
+@pytest.fixture
+def fake_bt(fake_projector) -> FakeBluetooth:
+    return FakeBluetooth(fake_projector)
+
+
 FAST = Timing(poll=0.01, wake_timeout=0.2, app_launch_timeout=0.2, session_timeout=0.2,
               session_settle=0, launch_settle=0, store_settle=0, play_attempts=3, play_attempt_timeout=0.05)  # fmt: skip
 
 
 @pytest.fixture
-def client(settings, fake_jellyfin, fake_projector):
+def client(settings, fake_jellyfin, fake_projector, fake_bt):
     app = create_app(
         settings, jellyfin_transport=fake_jellyfin.transport, adb_factory=fake_projector.adb_factory,
-        remote=fake_projector, waker=fake_projector.wake, timing=FAST, run_jobs=False,
+        remote=fake_projector, waker=fake_projector.wake, bt=fake_bt, timing=FAST, run_jobs=False,
     )  # fmt: skip
     with TestClient(app) as test_client:
         yield test_client

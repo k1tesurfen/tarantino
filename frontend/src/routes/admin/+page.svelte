@@ -3,6 +3,7 @@
 	import Card from '$lib/admin/Card.svelte';
 	import ShowLog from '$lib/admin/ShowLog.svelte';
 	import {
+		bluetoothCommand,
 		finishPairing,
 		getSessions,
 		getShows,
@@ -27,6 +28,8 @@
 
 	let pairingCode = $state('');
 	let pairingError = $state<string | null>(null);
+	let btBusy = $state(false);
+	let btError = $state<string | null>(null);
 	let query = $state('');
 	let results = $state<SampleItem[]>([]);
 
@@ -36,6 +39,7 @@
 	const media = $derived(status?.media);
 	const ha = $derived(status?.home_assistant);
 	const syncing = $derived(jellyfin?.sync?.running ?? false);
+	const bt = $derived(projector?.bluetooth);
 
 	async function refresh() {
 		try {
@@ -59,6 +63,27 @@
 		}
 		await refresh();
 	}
+
+	async function btCommand(action: 'pair' | 'stop' | 'unpair' | 'wake' | 'key', key?: string) {
+		if (action === 'pair' && bt?.paired && !confirm('Forget the current pairing and pair again?')) return;
+		if (action === 'unpair' && !confirm('Forget the pairing with the projector?')) return;
+		btBusy = true;
+		btError = null;
+		try {
+			await bluetoothCommand(action, key);
+		} catch (e) {
+			btError = (e as Error).message;
+		}
+		btBusy = false;
+		await refresh();
+	}
+
+	// While pairing, follow the pairing window more closely than the regular refresh.
+	$effect(() => {
+		if (!bt?.pairing) return;
+		const timer = setInterval(refresh, 3_000);
+		return () => clearInterval(timer);
+	});
 
 	async function setProjector(changes: { projector_device_id?: string; projector_address?: string }) {
 		await updateSettings(changes);
@@ -154,6 +179,41 @@
 			{#if pairingError}<p class="error">{pairingError}</p>{/if}
 		{:else}
 			<p class="muted">Set the address under <a href="/admin/settings">Settings</a> or pick a session below.</p>
+		{/if}
+		{#if bt}
+			<h3>Bluetooth remote</h3>
+			{#if !bt.available}
+				<p class="muted">Service not running (tarantino-btremote.service).</p>
+			{:else}
+				<dl>
+					<dt>Paired</dt><dd>{bt.paired ? (bt.name ?? 'yes') : 'no'}</dd>
+					{#if bt.paired}<dt>Connected</dt><dd>{bt.connected ? 'yes' : 'no (standby?)'}</dd>{/if}
+				</dl>
+				{#if bt.pairing}
+					<p class="muted">
+						Pairing… On the projector: Settings → Remotes &amp; Accessories, forget an old "Tarantino Remote",
+						then Add accessory → "Tarantino Remote".
+					</p>
+					<button class="ghost" onclick={() => btCommand('stop')} disabled={btBusy}>Stop pairing</button>
+				{:else}
+					<div class="buttons">
+						{#if bt.paired}
+							<button class="ghost" onclick={() => btCommand('wake')} disabled={btBusy}>Wake</button>
+							<button class="ghost" onclick={() => btCommand('key', 'star')} disabled={btBusy || !bt.connected}>
+								Shortcut key
+							</button>
+							<button class="ghost" onclick={() => btCommand('key', 'power')} disabled={btBusy || !bt.connected}>
+								Power
+							</button>
+							<button class="ghost" onclick={() => btCommand('unpair')} disabled={btBusy}>Unpair</button>
+						{/if}
+						<button class="ghost" onclick={() => btCommand('pair')} disabled={btBusy}>
+							{bt.paired ? 'Pair again' : 'Pair'}
+						</button>
+					</div>
+				{/if}
+			{/if}
+			{#if btError}<p class="error">{btError}</p>{/if}
 		{/if}
 	</Card>
 
@@ -254,6 +314,15 @@
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr));
 		gap: 2rem;
+	}
+	h3 {
+		margin: 1rem 0 0.4rem;
+		font-size: 0.95rem;
+	}
+	.buttons {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.4rem;
 	}
 	form.inline {
 		display: flex;

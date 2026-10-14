@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from tarantino import __version__
 from tarantino import auth
 from tarantino.api import admin, cassettes, cinema, config, events, franchises, images, programme, rooms, vhs
+from tarantino.btremote.client import BtRemote
 from tarantino.config import Settings, get_settings
 from tarantino.logs import setup_logging
 from tarantino.projector.adb import Adb
@@ -34,6 +35,7 @@ def create_app(
     timing: Timing | None = None,
     remote: RemoteLink | None = None,
     waker: Callable[[str], Awaitable[bool]] = cast_wake,
+    bt: BtRemote | None = None,
     run_jobs: bool = True,
 ) -> FastAPI:
     settings = settings or get_settings()
@@ -44,7 +46,7 @@ def create_app(
             "tarantino %s starting (data in %s, Jellyfin %s)", __version__, settings.data_dir,
             settings.jellyfin_url if settings.jellyfin_api_key else "not configured",
         )  # fmt: skip
-        services = Services.create(settings, jellyfin_transport, adb_factory, timing, remote, waker)
+        services = Services.create(settings, jellyfin_transport, adb_factory, timing, remote, waker, bt)
         app.state.services = services
         services.start(run_jobs=run_jobs)
         try:
