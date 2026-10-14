@@ -32,7 +32,13 @@ REMOTE_CONNECT_TIMEOUT = 60.0  # the remote service comes back some seconds afte
 REMOTE_PROBE_TIMEOUT = 3.0
 APP_INFO_TIMEOUT = 2.0  # right after connecting, the projector reports its foreground app
 BT_WAKE_TIMEOUT = 10.0  # a sleeping projector connects to the remote 1-2 s after the wake advert
-BT_KEY_SETTLE = 2.0  # after the wake, before the shortcut key
+# After a wake the projector swallows keys for a moment. The Android TV remote (back within
+# a second of the wake) tells when it is on and which app is in front; without it there
+# is no feedback, and the shortcut key is pressed twice (harmless once Jellyfin is open).
+BT_READY_TIMEOUT = 15.0  # wait for the Android TV remote to report the projector on
+BT_KEY_SETTLE = 1.0  # after the projector reports on, before the first shortcut key
+BT_SHORTCUT_ATTEMPTS = 3
+BT_SHORTCUT_CONFIRM = 4.0  # per attempt: Jellyfin in front?
 
 log = logging.getLogger(__name__)
 
@@ -131,7 +137,7 @@ class Projector:
         actions = []
         if self.bt is not None:
             try:
-                result = await self._prepare_via_bluetooth(address)
+                result = await self._prepare_via_bluetooth(address, poll)
             except BtRemoteError as exc:
                 log.warning("Bluetooth remote failed (%s); using Cast and the Android TV remote", exc)
                 actions.append(f"Bluetooth failed ({exc})")
@@ -178,28 +184,55 @@ class Projector:
             actions.append("opened Jellyfin")
         return PrepareResult(", ".join(actions) or "Projector on, Jellyfin open", launched)
 
-    async def _prepare_via_bluetooth(self, address: str) -> PrepareResult | None:
+    async def _prepare_via_bluetooth(self, address: str, poll: float) -> PrepareResult | None:
         """Wake via the Bluetooth remote and open Jellyfin with the shortcut key.
 
-        None when no Bluetooth remote is paired (or its service is not running).
+        None when no Bluetooth remote is paired (or its service is not running). Raises
+        BtRemoteError when it fails, so the caller falls back to Cast and the Play Store.
         """
         state = await self.bt.status()
         if not state.get("paired"):
             return None
         actions = []
-        if state.get("connected"):
-            # On already: leave Jellyfin alone if the Android TV remote sees it in front.
-            await self.remote.ensure_connected(REMOTE_PROBE_TIMEOUT, REMOTE_PROBE_TIMEOUT)
-            if await self.current_app(address) == JELLYFIN_PACKAGE:
-                return PrepareResult("Projector on, Jellyfin open", False)
-        else:
+        woke = not state.get("connected")
+        if woke:
             if not await self.bt.wake(BT_WAKE_TIMEOUT):
                 raise BtRemoteError("the projector did not connect after the wake advert")
             actions.append("woke projector (Bluetooth)")
+
+        feedback = await self.remote.ensure_connected(
+            BT_READY_TIMEOUT if woke else REMOTE_PROBE_TIMEOUT, REMOTE_PROBE_TIMEOUT
+        )
+        if feedback:
+            try:
+                await self._wait(self._reports_on, BT_READY_TIMEOUT, "", poll)
+            except ProjectorError:
+                pass  # try the key anyway; the check below tells whether it worked
+        if not woke and await self.current_app(address) == JELLYFIN_PACKAGE:
+            return PrepareResult("Projector on, Jellyfin open", False)
+        if woke:
             await asyncio.sleep(BT_KEY_SETTLE)
-        await self.bt.key("star")
-        actions.append("opened Jellyfin (shortcut key)")
+
+        async def jellyfin_in_front() -> bool:
+            return self.remote.current_app == JELLYFIN_PACKAGE
+
+        presses = BT_SHORTCUT_ATTEMPTS if feedback else 2
+        for press in range(1, presses + 1):
+            await self.bt.key("star")
+            try:
+                await self._wait(jellyfin_in_front, BT_SHORTCUT_CONFIRM, "", poll)
+            except ProjectorError:
+                continue  # without feedback this is just the pause before the second press
+            note = "" if press == 1 else f", {press} presses"
+            actions.append(f"opened Jellyfin (shortcut key{note})")
+            return PrepareResult(", ".join(actions), True)
+        if feedback:
+            raise BtRemoteError(f"Jellyfin did not come to the front after {presses} shortcut key presses")
+        actions.append("pressed the shortcut key (no feedback)")
         return PrepareResult(", ".join(actions), True)
+
+    async def _reports_on(self) -> bool:
+        return self.remote.is_on is True
 
     async def _wait(self, check, timeout: float, error: str, poll: float) -> None:
         deadline = asyncio.get_running_loop().time() + timeout

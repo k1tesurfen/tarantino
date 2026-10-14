@@ -28,6 +28,30 @@ def test_sleeping_projector_is_woken_via_bluetooth_and_jellyfin_opened_with_the_
     assert show["steps"][1]["message"] == "woke projector (Bluetooth), opened Jellyfin (shortcut key)"
 
 
+def test_swallowed_shortcut_key_is_pressed_again_until_jellyfin_is_in_front(paired, fake_bt, fake_projector):
+    fake_bt.swallowed_stars = 2
+    show = start(paired, MOVIE)
+    assert show["state"] == "playing", show
+    assert fake_projector.calls == ["bt-wake", "bt-star", "bt-star", "bt-star"]
+    assert show["steps"][1]["message"] == "woke projector (Bluetooth), opened Jellyfin (shortcut key, 3 presses)"
+
+
+def test_shortcut_key_that_never_opens_jellyfin_falls_back_to_the_play_store(paired, fake_bt, fake_projector):
+    fake_bt.swallowed_stars = 99
+    show = start(paired, MOVIE)
+    assert show["state"] == "playing", show
+    assert fake_projector.calls == ["bt-wake", "bt-star", "bt-star", "bt-star", "remote-launch", "KEYCODE_DPAD_CENTER"]
+    assert show["steps"][1]["message"].startswith("Bluetooth failed (Jellyfin did not come to the front")
+
+
+def test_without_android_tv_remote_the_shortcut_is_pressed_twice(paired, fake_bt, fake_projector):
+    fake_projector.state = "unreachable"  # no feedback channel
+    show = start(paired, MOVIE)
+    assert show["state"] == "playing", show
+    assert fake_projector.calls == ["bt-wake", "bt-star", "bt-star"]
+    assert show["steps"][1]["message"] == "woke projector (Bluetooth), pressed the shortcut key (no feedback)"
+
+
 def test_projector_on_with_launcher_in_front_only_gets_the_shortcut(paired, fake_projector):
     fake_projector.on = True
     show = start(paired, MOVIE)

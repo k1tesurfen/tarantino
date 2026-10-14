@@ -11,11 +11,11 @@ with one JSON request and one JSON reply per connection:
     {"cmd": "unpair"}                     forget the pairing
 
 It runs as its own service so the projector keeps its connection to the remote while
-the web app is redeployed. When the remote's HID service disappears while the projector
-is connected, the projector stops reconnecting to it altogether (only a new pairing
-helps). So on shutdown the daemon first drops the link, which the projector takes like
-going out of range; after a start it advertises briefly so a projector that is on can
-reconnect (a plain advert does not wake a sleeping one).
+the web app is redeployed. Seen on the device: when the link to an awake projector
+dropped during a restart, the projector stopped reconnecting to the remote altogether
+(only a new pairing helped); when the link survived the restart, all was well. So the
+daemon never drops the link itself. After a start it advertises briefly, so a projector
+that is on can reconnect (a plain advert does not wake a sleeping one).
 """
 
 import asyncio
@@ -45,7 +45,6 @@ ADV_INTERVAL_MS = (20, 30)  # fast, like a real remote; the projector scans only
 KEY_RELEASE_DELAY = 0.08
 POLL = 0.25
 RECONNECT_SECONDS = 15.0  # after a start, let a projector that is on reconnect
-DISCONNECT_TIMEOUT = 3.0
 WAKE_TIMEOUT_LIMITS = (1.0, 30.0)
 PAIRING_LIMITS = (10.0, 300.0)
 
@@ -293,7 +292,6 @@ class RemoteDaemon:
                 task.cancel()
         if self._exit_code == 0:  # bluetoothd is still there
             await self._stop_advert()
-            await self._drop_link()
         self.bus.disconnect()
         return self._exit_code
 
@@ -322,18 +320,6 @@ class RemoteDaemon:
                 await self._reconnect_task
             except asyncio.CancelledError:
                 pass
-
-    async def _drop_link(self) -> None:
-        """Disconnect the projector before our HID service goes away (see the module docstring)."""
-        try:
-            projector = await self._projector()
-            if not (projector and projector["connected"]):
-                return
-            device = await self._proxy(projector["path"], "org.bluez.Device1")
-            await asyncio.wait_for(device.call_disconnect(), DISCONNECT_TIMEOUT)
-            log.info("Disconnected the projector before stopping")
-        except (DBusError, TimeoutError) as exc:
-            log.warning("Could not disconnect the projector before stopping: %s", exc)
 
     async def _watch_bluez(self) -> None:
         """Exit when bluetoothd restarts: our registrations are gone then; systemd restarts us."""

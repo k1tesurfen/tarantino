@@ -278,6 +278,7 @@ class FakeBluetooth:
         self.paired = False
         self.pairing = False
         self.wake_works = True
+        self.swallowed_stars = 0  # shortcut presses the waking projector ignores
 
     @property
     def connected(self) -> bool:
@@ -311,7 +312,9 @@ class FakeBluetooth:
         if not self.connected:
             raise BtRemoteError("The projector is not connected to the Bluetooth remote")
         self.p.calls.append(f"bt-{name}")
-        if name == "star":
+        if name == "star" and self.swallowed_stars:
+            self.swallowed_stars -= 1
+        elif name == "star":
             self.p._open("org.jellyfin.androidtv")
         elif name == "power":
             self.p.on = False
@@ -339,6 +342,8 @@ def fast_remote_probe(monkeypatch):
     monkeypatch.setattr(projector, "REMOTE_PROBE_TIMEOUT", 0.02)
     monkeypatch.setattr(projector, "APP_INFO_TIMEOUT", 0.02)
     monkeypatch.setattr(projector, "BT_KEY_SETTLE", 0)
+    monkeypatch.setattr(projector, "BT_READY_TIMEOUT", 0.1)
+    monkeypatch.setattr(projector, "BT_SHORTCUT_CONFIRM", 0.05)
 
 
 @pytest.fixture
