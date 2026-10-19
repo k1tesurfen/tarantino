@@ -10,7 +10,7 @@ How to run, check, back up and troubleshoot tarantino on the mini-PC. Installati
 | Data: database, signing key, Android TV remote pairing, backups | `/var/lib/tarantino` (owned by the `tarantino` service user) |
 | Bluetooth remote pairing | BlueZ, `/var/lib/bluetooth` (root) |
 | Secrets | `/etc/tarantino/tarantino.env` (see [`deploy/env.example`](../deploy/env.example)) |
-| Services | `tarantino.service` (web app on port 80), `tarantino-mdns.service` (`tarantino.local` alias), `tarantino-btremote.service` (Bluetooth remote for the projector) |
+| Services | `tarantino.service` (web app on `127.0.0.1:8000`, behind the host's reverse proxy on port 80), `tarantino-mdns.service` (`tarantino.local` alias), `tarantino-btremote.service` (Bluetooth remote for the projector) |
 
 Everything else (rooms, cassettes, device addresses, theme names) is configured in the admin website and stored in the database.
 
@@ -115,6 +115,7 @@ If a pairing hangs on the projector, restart the projector (button on the chassi
 | Symptom | Check |
 |---|---|
 | `tarantino.local` doesn't resolve | `sudo systemctl status tarantino-mdns.service`. Try the mini-PC's IP address. |
+| Port 80 doesn't answer, but `curl http://localhost:8000/api/health` works on the mini-PC | The reverse proxy is down. tarantino only listens locally and relies on it. |
 | Admin shows "Jellyfin: error" | Is Jellyfin running? Are the API key and user right in the env file? |
 | Projector card says *unpaired* | Admin dashboard → pair the projector, then enter the code shown on screen. |
 | Bluetooth remote: *service not running* | `sudo systemctl status tarantino-btremote.service`; after the first update with it, run `sudo deploy/install.sh` once. |

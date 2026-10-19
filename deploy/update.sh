@@ -35,7 +35,7 @@ if ! git diff --quiet "$before" HEAD -- backend/tarantino/btremote; then
 fi
 
 for _ in $(seq 1 20); do
-    if curl -fsS http://localhost/api/health 2>/dev/null; then
+    if curl -fsS http://localhost:8000/api/health 2>/dev/null; then
         echo
         exit 0
     fi

@@ -25,7 +25,7 @@ app.add_typer(config_app, name="config")
 vhs_app = typer.Typer(help="Simulate the VHS recorder.", no_args_is_help=True)
 app.add_typer(vhs_app, name="vhs")
 
-DEFAULT_URL = "http://localhost"
+DEFAULT_URL = "http://localhost:8000"
 DEFAULT_DATA_DIR = Path("/var/lib/tarantino")
 
 

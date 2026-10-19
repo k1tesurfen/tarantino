@@ -77,7 +77,7 @@ rm -f "$SUDOERS.tmp"
 
 echo "==> health check"
 for _ in $(seq 1 20); do
-    if curl -fsS http://localhost/api/health 2>/dev/null; then
+    if curl -fsS http://localhost:8000/api/health 2>/dev/null; then
         echo
         echo "tarantino is running: http://tarantino.local"
         exit 0

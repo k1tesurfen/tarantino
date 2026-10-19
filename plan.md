@@ -136,7 +136,7 @@ The specific addresses and names are kept out of the repo on purpose.
 - **Backend:** Python 3.13 + FastAPI + SQLAlchemy 2 / SQLite (with Alembic migrations), `httpx` for HTTP, APScheduler for jobs, Typer for the CLI. Dependencies are pinned in `pyproject.toml` and installed into a plain venv (`uv` isn't available on either machine, so it was dropped). I chose this stack because the integrations (Jellyfin, HA, ADB, USB) are easiest in Python.
 - **Frontend:** a SvelteKit SPA (`adapter-static`) built into static files and served by FastAPI. Node is installed on the mini-PC for the build.
 - **Deployment:**
-  - Native **systemd** service, running as a dedicated `tarantino` user, on **port 80** via `CAP_NET_BIND_SERVICE`.
+  - Native **systemd** service, running as a dedicated `tarantino` user, on `127.0.0.1:8000`. A host-wide reverse proxy (not part of this repo) serves port 80 and routes `tarantino.local` and any unmatched host name to it.
   - Checkout in `/opt/tarantino`, owned by the deploy user. Data in `/var/lib/tarantino`, secrets in `/etc/tarantino/tarantino.env`. A narrow sudo rule lets the deploy user restart the service, so updates need no password.
   - Reachable at **`http://tarantino.local`** through an Avahi alias. The mini-PC keeps its own hostname, and its IP is detected at runtime, not committed.
 - **Config:**

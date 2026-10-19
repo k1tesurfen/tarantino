@@ -12,13 +12,12 @@ EnvironmentFile=/etc/tarantino/tarantino.env
 Environment=TARANTINO_DATA_DIR=/var/lib/tarantino
 Environment=TARANTINO_FRONTEND_DIR=@APP_DIR@/frontend/build
 Environment=HOME=/var/lib/tarantino
-ExecStart=@APP_DIR@/.venv/bin/uvicorn tarantino.main:app --host 0.0.0.0 --port 80 --no-access-log --timeout-graceful-shutdown 5
+ExecStart=@APP_DIR@/.venv/bin/uvicorn tarantino.main:app --host 127.0.0.1 --port 8000 --no-access-log --timeout-graceful-shutdown 5
 Restart=always
 RestartSec=3
 
-# Bind port 80 without root.
-AmbientCapabilities=CAP_NET_BIND_SERVICE
-CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+# Local only: the host's reverse proxy serves port 80 and forwards to this port.
+CapabilityBoundingSet=
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
